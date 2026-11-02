@@ -1,0 +1,52 @@
+{
+  "count": 7,
+  "total_gain": -6.1,
+  "filters": [
+    {
+      "type": 1,
+      "frequency": 29.0,
+      "gain": -0.9,
+      "q": 2.0
+    },
+    {
+      "type": 1,
+      "frequency": 50.0,
+      "gain": -5.4,
+      "q": 0.5
+    },
+    {
+      "type": 1,
+      "frequency": 60.0,
+      "gain": 1.0,
+      "q": 1.0
+    },
+    {
+      "type": 1,
+      "frequency": 240.0,
+      "gain": -4.5,
+      "q": 1.5
+    },
+    {
+      "type": 1,
+      "frequency": 2000.0,
+      "gain": 2.5,
+      "q": 1.2
+    },
+    {
+      "type": 1,
+      "frequency": 5900.0,
+      "gain": 3.8,
+      "q": 1.1
+    },
+    {
+      "type": 1,
+      "frequency": 10000.0,
+      "gain": 4.8,
+      "q": 2.0
+    }
+  ],
+  "disabled_filters": [
+    8
+  ],
+  "name": "CMF Headphone Pro Filters"
+}

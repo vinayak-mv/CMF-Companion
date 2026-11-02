@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <title>CMF · EQ</title>
+  <meta name="theme-color" content="#080808">
+  <link rel="icon" type="image/svg+xml" href="brand-mark.svg">
+  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="monochrome.css">
+</head>
+<body>
+<div class="companion">
+  <header class="titlebar">
+    <div class="drag-area" data-tauri-drag-region><img src="brand-mark.svg" alt="" draggable="false" data-tauri-drag-region><span data-tauri-drag-region>CMF <b data-tauri-drag-region>/ COMPANION</b></span></div>
+    <div class="window-actions"><button id="pin" class="icon-button" aria-label="Keep on top" aria-pressed="false" title="Keep on top"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="m7 3 6 0-1 5 3 3H5l3-3-1-5Zm3 8v6"/></svg></button><button id="minimize" class="icon-button" aria-label="Minimize" title="Minimize"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5 10h10"/></svg></button><button id="close" class="icon-button close" aria-label="Close" title="Close"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="m6 6 8 8m0-8-8 8"/></svg></button></div>
+  </header>
+  <main>
+    <section id="connection-screen" class="connection-screen" aria-labelledby="connection-title">
+      <svg class="connection-illustration" viewBox="0 0 200 180" aria-hidden="true"><circle class="connection-halo" cx="100" cy="90" r="72"/><path class="headphone-arch" d="M49 100V78a51 51 0 0 1 102 0v22"/><path class="headphone-cushion" d="M49 92h-6a10 10 0 0 0-10 10v27a10 10 0 0 0 10 10h13V92Zm102 0h6a10 10 0 0 1 10 10v27a10 10 0 0 1-10 10h-13V92Z"/><path class="headphone-detail" d="M61 91v50m78-50v50M66 63a38 38 0 0 1 68 0"/><circle class="connection-indicator" cx="100" cy="153" r="4"/></svg>
+      <h1 id="connection-title" role="status" aria-live="polite">Device Not Connected</h1>
+      <p id="connection-info" class="small muted">Pair CMF Headphones Pro in Windows Bluetooth settings, then connect.</p>
+      <button id="scan-devices" class="primary" disabled title="Find paired CMF Headphones Pro and connect">Connect headphones</button>
+    </section>
+    <section id="controls" class="view controls-view" role="tabpanel" aria-labelledby="tab-controls" tabindex="0">
+      <div class="device-hero">
+        <div class="device-name"><strong id="device-name">CMF Headphones Pro</strong><div class="hero-status"><span class="connection-status"><i></i><span id="connection-state">Not connected</span></span><span id="battery" class="battery" aria-label="Battery unavailable"><svg viewBox="0 0 24 16" aria-hidden="true"><rect x="1" y="3" width="18" height="10" rx="2"/><path d="M22 6v4"/></svg><span id="battery-level">—</span></span></div></div>
+        <div class="headphone-stage"><svg viewBox="0 0 320 240" role="img" aria-label="Headphone illustration">
+          <defs><linearGradient id="headband-metal" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#eeeeee"/><stop offset=".45" stop-color="#737373"/><stop offset="1" stop-color="#dddddd"/></linearGradient><linearGradient id="earcup-shell" x1="0" y1="0" x2="1" y2=".5"><stop stop-color="#343434"/><stop offset=".5" stop-color="#191919"/><stop offset="1" stop-color="#080808"/></linearGradient></defs>
+          <ellipse cx="160" cy="221" rx="75" ry="7" fill="#ffffff04"/>
+          <path d="M72 136V102a88 88 0 0 1 176 0v34" fill="none" stroke="url(#headband-metal)" stroke-width="12"/>
+          <path d="M81 102a79 79 0 0 1 158 0" fill="none" stroke="#252525" stroke-width="8"/>
+          <path d="M72 108v42m176-42v42" stroke="#a3a3a3" stroke-width="5" stroke-linecap="round"/>
+          <g transform="rotate(-10 82 164)"><rect x="53" y="117" width="46" height="91" rx="21" fill="url(#earcup-shell)" stroke="#777777"/><rect x="88" y="123" width="16" height="79" rx="8" fill="#111111" stroke="#404040"/><path d="M62 137v49" stroke="#ffffff25" stroke-width="2" stroke-linecap="round"/></g>
+          <g transform="rotate(10 238 164)"><rect x="221" y="117" width="46" height="91" rx="21" fill="url(#earcup-shell)" stroke="#777777"/><rect x="216" y="123" width="16" height="79" rx="8" fill="#111111" stroke="#404040"/><circle cx="255" cy="163" r="6" fill="#aaaaaa"/><path d="M255 159v8" stroke="#343434" stroke-width="1.5" stroke-linecap="round"/><rect x="251" y="182" width="7" height="3" rx="1.5" fill="#777777"/></g>
+        </svg></div>
+        <div id="stored-eq-preview" class="hero-eq" hidden>
+          <div class="hero-eq-heading"><span>Stored EQ · calculated response</span><span id="stored-band-count"></span></div>
+          <svg id="stored-eq-graph" viewBox="0 0 320 40" role="img" aria-label="Calculated response of the EQ read from the headphones" preserveAspectRatio="none"><path class="hero-eq-zero" d="M0 20H320"/><path id="stored-eq-curve"/></svg>
+          <div class="hero-eq-axis"><span>20 Hz</span><span>20 kHz</span></div>
+        </div>
+      </div>
+        <div class="connection-feedback" hidden><span id="connection-help" class="small muted"></span><button id="connection-details" aria-controls="status-detail" aria-expanded="false" aria-label="View readback warnings" hidden>Details</button><button id="retry-read" hidden>Retry read</button></div>
+        <div id="status-detail" class="connection-detail" hidden></div>
+      <div class="control-surface">
+      <div class="control-card"><div class="card-heading"><span>Noise control</span></div><div class="segments" role="group" aria-label="Noise control"><button data-noise="off" aria-pressed="false" disabled>Off</button><button data-noise="transparency" aria-pressed="false" disabled>Transparency</button><button data-noise="anc" aria-pressed="false" aria-controls="anc-levels" aria-expanded="false" disabled>ANC</button></div><div id="anc-levels" class="segments anc-levels" role="group" aria-label="ANC level" hidden><button data-anc="3" aria-pressed="false" disabled>Low</button><button data-anc="2" aria-pressed="false" disabled>Medium</button><button data-anc="1" aria-pressed="false" disabled>High</button><button data-anc="4" aria-pressed="false" disabled>Adaptive</button></div></div>
+      <div class="control-card"><div class="card-heading"><span>Spatial audio</span><div class="control-meta"><button class="info-toggle" aria-label="About spatial audio" aria-describedby="spatial-info" data-info>i</button></div></div><div class="segments spatial-modes" role="group" aria-label="Spatial audio"><button data-spatial="0" aria-pressed="false" disabled>Off</button><button data-spatial="3" aria-pressed="false" disabled>Cinema</button><button data-spatial="2" aria-pressed="false" disabled>Concert</button></div><div id="spatial-info" class="info-tooltip" role="tooltip"><p class="small muted spatial-help">First use asks for confirmation. Changes are checked on the headphones.</p></div></div>
+      <div class="control-card gain-card">
+        <div class="card-heading"><span>Output gain</span><div class="control-meta"><button id="undo-gain" disabled hidden title="Undo the last gain step without changing EQ bands">Undo</button><button class="info-toggle" aria-label="About output gain" aria-describedby="gain-info" data-info>i</button></div></div>
+        <div class="gain-actions"><button id="gain-down" disabled aria-label="Lower headphone EQ gain by one decibel">−</button><output id="gain-value" aria-live="polite">— dB</output><button id="gain-up" disabled aria-label="Raise headphone EQ gain by one decibel">+</button></div>
+        <p id="gain-warning" class="small invalid-draft" role="status" hidden></p>
+        <div id="gain-info" class="info-tooltip" role="tooltip">
+        <p class="small muted">Adjusts the stored EQ preamp in 1 dB steps.</p>
+        <p id="gain-peak" class="small muted">Connect to read the current gain.</p>
+        <p id="gain-help" class="small muted">Keeps your EQ bands. First use asks for confirmation; then adjust in 1 dB steps.</p>
+        </div>
+      </div>
+      </div>
+    </section>
+    <section id="eq" class="view eq-view" data-mode="presets" role="tabpanel" aria-labelledby="tab-eq" tabindex="0" hidden>
+      <div class="view-heading"><div class="truncate"><span class="eyebrow">YOUR SOUND · EDITOR DRAFT</span><h1 id="profile-name">Flat</h1></div><span id="band-count" class="badge">4 / 8</span></div>
+      <div class="response-card"><svg id="response" viewBox="0 0 920 240" role="group" tabindex="0" aria-label="Editable EQ response. Drag a numbered point to change frequency and gain. Use the band controls for Q." aria-describedby="graph-readout"></svg><div class="graph-caption"><span><i></i> <span id="graph-readout" title="Drag a point left/right for frequency and up/down for gain. Tap for numeric settings. Changes stay in the draft until Apply.">Drag points · Draft</span></span><div class="preamp"><label for="preamp">Preamp</label><div class="number-unit"><input id="preamp" type="number" step="any" value="-6.1" required aria-label="Preamp in decibels"><span>dB</span></div></div></div></div>
+      <div class="eq-mode-switch" role="group" aria-label="Equalizer mode"><button data-eq-mode="presets" aria-pressed="true" aria-controls="eq-presets">Presets</button><button data-eq-mode="custom" aria-pressed="false" aria-controls="eq-custom">Custom</button></div>
+      <div id="eq-presets" class="eq-presets">
+      <div class="preset-caption"><span>Choose your sound</span><button id="undo-preset" disabled>Undo draft</button></div>
+      <div class="preset-buttons" role="group" aria-label="Preview a sound preset"><button data-preset="flat"><strong>Flat</strong><small>No added EQ</small></button><button data-preset="punch"><strong>Punch</strong><small>Kick weight</small></button><button data-preset="deep"><strong>Deep bass</strong><small>Low rumble</small></button></div>
+      <div class="sound-heading"><span id="active-sound" class="small muted">Headphones: not connected</span><button id="toggle-tone" aria-expanded="false" aria-controls="tone-panel">Tune sound</button></div>
+      <section id="tone-panel" class="tone-panel" aria-label="Bass and punch controls" hidden>
+        <p id="tone-help" class="small muted">Listening starting point · adjust, then Apply.</p>
+        <div class="tone-sliders">
+          <label for="tone-deep">Deep bass <output id="tone-deep-value" for="tone-deep">30%</output><input id="tone-deep" type="range" min="0" max="100" step="1" value="30"></label>
+          <label for="tone-punch">Punch <output id="tone-punch-value" for="tone-punch">65%</output><input id="tone-punch" type="range" min="0" max="100" step="1" value="65"></label>
+          <label for="tone-clarity">Clarity <output id="tone-clarity-value" for="tone-clarity">45%</output><input id="tone-clarity" type="range" min="0" max="100" step="1" value="45"></label>
+        </div>
+      </section>
+      </div>
+      <div id="eq-custom" class="eq-custom" hidden>
+      <div id="bands" class="band-strip" role="group" aria-label="EQ bands. Select a band to edit its settings."></div>
+      <section id="band-editor" class="band-editor" aria-labelledby="band-title" hidden>
+        <div class="band-editor-heading"><h2 id="band-title">Band 01</h2><label class="band-enabled"><span id="band-enabled-label">Enabled</span><input id="band-enabled" type="checkbox" role="switch" aria-label="Enable selected band"></label><button id="close-band" class="icon-button" aria-label="Close band settings" title="Close band settings (Escape)">×</button></div>
+        <div class="band-fields">
+          <label>Filter type<select id="band-kind"><option value="PK">Peak</option><option value="LS">Low shelf</option><option value="HS">High shelf</option></select></label>
+          <label>Frequency · Hz<input id="band-frequency" type="number" min="20" max="20000" step="any" required></label>
+          <label>Gain · dB<input id="band-gain" type="number" step="any" required></label>
+          <label>Q<input id="band-q" type="number" min="0" step="any" required></label>
+        </div>
+      </section>
+      </div>
+      <p id="condition" hidden>Bass starting point · Custom EQ, ANC High, bass slider minimum, spatial off.</p>
+      <div class="eq-footer">
+        <div class="headroom-line"><span id="headroom-status" role="status"></span><button id="auto-headroom">Auto headroom</button></div>
+        <button id="device-eq-status" class="small muted" disabled>Connect to read the headphone EQ.</button>
+        <div class="eq-actions"><button id="save-draft">Save profile</button><button id="export-draft">Export .txt</button><button id="apply-eq" class="primary" disabled>Apply to headphones</button></div>
+      </div>
+    </section>
+    <section id="profiles" class="view profiles-view" role="tabpanel" aria-labelledby="tab-profiles" tabindex="0" hidden>
+      <div class="view-heading"><div><span class="eyebrow">YOUR LIBRARY</span><h1>Profiles</h1></div><button id="save-profile-from-editor" class="primary">Save current</button></div>
+      <div class="import-card compact-import"><div><strong>Import AutoEQ</strong><p class="small muted">Equalizer APO · up to 8 bands</p></div><button id="choose-profile">Import .txt ↗</button><input id="profile-file" type="file" accept=".txt,text/plain" hidden></div>
+      <div id="import-preview" class="import-preview" hidden><span id="preview-label" class="eyebrow">IMPORT PREVIEW</span><h2 id="import-name"></h2><p id="import-summary"></p><div class="preview-actions"><button id="cancel-import">Cancel</button><button id="use-import" class="primary">Use in editor</button></div></div>
+      <section class="saved-library" aria-label="Saved profiles">
+        <div class="library-toolbar"><span class="eyebrow">SAVED <span id="library-count">0</span></span><button id="undo-remove-profile" hidden>Undo remove</button><button id="refresh-profiles" aria-label="Refresh saved profiles">Refresh</button></div>
+        <label for="profile-search" class="visually-hidden">Search saved profiles</label><input id="profile-search" type="search" maxlength="80" placeholder="Find a profile…">
+        <p id="library-status" class="small muted" role="status">Loading saved profiles…</p>
+        <div id="saved-profile-list"></div>
+        <div class="library-pager"><button id="profiles-previous" aria-label="Previous profiles">←</button><span id="profiles-page" class="small muted">0 profiles</span><button id="profiles-next" aria-label="Next profiles">→</button></div>
+      </section>
+      <div class="library-label reference-label"><span class="eyebrow">REFERENCE PROFILE</span></div>
+      <button id="reference" class="profile-item"><span class="profile-mark" aria-hidden="true">≋</span><span class="profile-description"><strong>Harman 2018 target</strong><span class="muted small">Reference · 7 bands · −6.1 dB · ANC maximum</span></span><span aria-hidden="true">↗</span></button>
+      <div class="view-bottom"><p id="snapshot-status" class="small muted">An original EQ backup is saved before your first Apply.</p><div class="recovery-actions"><button id="read-device" disabled>Read device</button><button id="use-device-eq" disabled>Review device EQ</button><button id="restore-eq" disabled>Restore original</button></div></div>
+    </section>
+    <section id="settings" class="view settings-view" role="tabpanel" aria-labelledby="tab-settings" tabindex="0" hidden>
+      <div class="view-heading"><h1>Settings</h1></div>
+      <div class="control-card setting-row"><div><strong>Keep on top</strong><p class="small muted">Keep the companion above other windows.</p><p class="small muted desktop-setting-note">Available in the desktop app.</p></div><button id="settings-pin" aria-label="Keep on top" aria-pressed="false" disabled>Off</button></div>
+      <div class="control-card setting-row"><div><strong>Headphones</strong><p class="small muted">Close the headphone control connection.</p></div><button id="connect-headphones" disabled hidden>Disconnect</button></div>
+    </section>
+  </main>
+  <nav class="tabs" role="tablist" aria-label="Companion sections">
+    <button id="tab-controls" role="tab" aria-label="Controls" title="Controls" aria-selected="true" aria-controls="controls" tabindex="0"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h4m4 0h8M4 17h8m4 0h4"/><circle cx="10" cy="7" r="2"/><circle cx="14" cy="17" r="2"/></svg></button>
+    <button id="tab-eq" role="tab" aria-label="Equalizer" title="Equalizer" aria-selected="false" aria-controls="eq" tabindex="-1"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 9v6m7-11v16m7-13v10"/></svg></button>
+    <button id="tab-profiles" role="tab" aria-label="Profiles" title="Profiles" aria-selected="false" aria-controls="profiles" tabindex="-1"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="12" height="15" rx="2"/><path d="M8 2h10a2 2 0 0 1 2 2v12M8 10h4m-4 5h4"/></svg></button>
+    <button id="tab-settings" role="tab" aria-label="Settings" title="Settings" aria-selected="false" aria-controls="settings" tabindex="-1"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 3-.6 2.2-2 .9-2.1-.6-2 3.5 1.6 1.6v2.8L2.3 15l2 3.5 2.1-.6 2 .9L9 21h4l.6-2.2 2-.9 2.1.6 2-3.5-1.6-1.6v-2.8L19.7 9l-2-3.5-2.1.6-2-.9L13 3Z"/><circle cx="11" cy="12" r="3"/></svg></button>
+  </nav>
+  <div id="notification" class="notification" hidden><span id="message" role="status" aria-live="polite"></span><button id="dismiss-notification" class="icon-button" aria-label="Dismiss notification">×</button></div>
+  <dialog id="eq-confirm" aria-labelledby="eq-confirm-title">
+    <form id="eq-confirm-form">
+      <span class="eyebrow">HEADPHONE EQ</span><h2 id="eq-confirm-title">Review before applying</h2>
+      <p id="eq-confirm-target" class="small"></p>
+      <p id="eq-confirm-summary" class="small"></p>
+      <div class="confirm-table-wrap"><table class="confirm-table"><thead><tr><th>Band</th><th>Type</th><th>Hz</th><th>dB</th><th>Q</th></tr></thead><tbody id="eq-confirm-bands"></tbody></table></div>
+      <p id="eq-confirm-backup" class="small muted"></p>
+      <p id="eq-confirm-gain-warning" class="small invalid-draft" hidden></p>
+      <p class="small muted">Choose Custom EQ in Nothing X first. For bass presets: ANC High, bass slider minimum, spatial audio off. Then close Nothing X if it holds the connection.</p>
+      <label class="custom-mode-check"><input id="custom-mode-confirmed" type="checkbox" required><span id="custom-mode-label">Custom EQ is selected in Nothing X.</span></label>
+      <p id="eq-confirm-result" class="small" role="status" aria-live="polite"></p>
+      <div class="preview-actions"><button id="cancel-eq" type="button">Cancel</button><button id="confirm-eq" type="submit" class="primary">Apply and verify</button></div>
+    </form>
+  </dialog>
+  <dialog id="profile-dialog" aria-labelledby="profile-dialog-title">
+    <form id="profile-form">
+      <span class="eyebrow">LOCAL PROFILE LIBRARY</span><h2 id="profile-dialog-title">Save profile</h2>
+      <p id="profile-dialog-summary" class="small muted"></p>
+      <label class="profile-field">Name<input id="saved-profile-name" type="text" maxlength="80" required autocomplete="off"></label>
+      <label class="profile-field">Listening notes <span class="muted small">Optional · reminders only</span><input id="saved-profile-notes" type="text" maxlength="512" autocomplete="off" placeholder="e.g. ANC High, spatial off"></label>
+      <p class="small muted">Saves the editor tuning on this computer. Open a card, then Apply to listen.</p>
+      <p id="profile-dialog-error" class="small invalid-draft" role="alert" hidden></p>
+      <div class="profile-dialog-actions"><button id="remove-profile" type="button" hidden>Remove</button><button id="cancel-profile" type="button">Cancel</button><button id="update-profile" type="button" hidden>Update existing</button><button id="save-profile" type="submit" class="primary">Save new</button></div>
+    </form>
+  </dialog>
+</div>
+<script type="module" src="app.mjs"></script>
+</body>
+</html>
