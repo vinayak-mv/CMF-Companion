@@ -21,7 +21,7 @@ let connection = { connected: false }, connectionBusy = false, pollTimer;
 if (connectedPreview) {
   connection = {
     connected: true,
-    device: { name: 'CMF Headphones Pro', address: 'Preview device' },
+    device: { name: 'CMF Headphone Pro', address: 'Preview device' },
     firmware: 'Preview',
     battery: { percent: 85, charging: false },
     anc_mode: 1,
@@ -55,8 +55,8 @@ let pendingCondition = 'Imported draft · match ANC to the profile’s measureme
 function renderConnection() {
   const connected = connection.connected;
   if (!connected) { gainConsentKey = null; spatialConsentKey = null; }
-  $('#device-name').textContent = connection.device?.name || 'CMF Headphones Pro';
-  $('#device-name').title = connection.device?.name || 'CMF Headphones Pro';
+  $('#device-name').textContent = connection.device?.name || 'CMF Headphone Pro';
+  $('#device-name').title = connection.device?.name || 'CMF Headphone Pro';
   $('#connection-state').textContent = connectionBusy ? (connected ? 'Updating settings…' : 'Connecting…') : connected ? 'Connected' : 'Not connected';
   if (connectedPreview) $('#connection-state').textContent = 'Connected preview';
   $('.companion').classList.toggle('connected', connected);
@@ -67,7 +67,7 @@ function renderConnection() {
   const battery = connection.battery;
   $('#battery-level').textContent = battery ? `${battery.percent}%${battery.charging ? ' ⚡' : ''}` : '—';
   $('#battery').setAttribute('aria-label', battery ? `Battery ${battery.percent} percent${battery.charging ? ', charging' : ''}` : 'Battery unavailable');
-  $('#connection-info').textContent = `Pair CMF Headphones Pro in ${isAndroid ? 'Android' : 'Windows'} Bluetooth settings, then connect.`;
+  $('#connection-info').textContent = `Pair CMF Headphone Pro in ${isAndroid ? 'Android' : 'Windows'} Bluetooth settings, then connect.`;
   $('#connection-info').title = connected ? `Protocol ${connection.protocol_version} · ${connection.device.address} · Firmware ${connection.firmware}` : '';
   $('#scan-devices').disabled = !invoke || connected || connectionBusy;
   $('#scan-devices').textContent = connectionBusy ? 'Connecting…' : 'Connect headphones';
@@ -183,12 +183,13 @@ async function scanDevices() {
   renderConnection();
   try {
     const devices = await invoke('list_paired_devices');
-    const device = devices.find(device => device.name.trim().toLowerCase() === 'cmf headphones pro');
+    // Bluetooth reports the singular product name; also accept the older UI spelling.
+    const device = devices.find(device => /^cmf headphones? pro$/i.test(device.name.trim().replace(/\s+/g, ' ')));
     if (!device) {
-      message(`CMF Headphones Pro not found. Pair them in ${isAndroid ? 'Android' : 'Windows'} Bluetooth settings, then Connect headphones.`);
+      message(`CMF Headphone Pro not found. Pair them in ${isAndroid ? 'Android' : 'Windows'} Bluetooth settings, then Connect headphones.`);
       return;
     }
-    message('CMF Headphones Pro found. Connecting and reading settings…');
+    message(`${device.name} found. Connecting and reading settings…`);
     connection = await invoke('connect_headphones', { address: device.address });
     connectionMessage(`Connected to ${connection.device.name}. Firmware ${connection.firmware}. Your editor draft is unchanged.`);
   } catch (error) {
