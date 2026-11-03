@@ -40,12 +40,11 @@
           <div class="hero-eq-axis"><span>20 Hz</span><span>20 kHz</span></div>
         </div>
       </div>
-        <div class="connection-feedback" hidden><span id="connection-help" class="small muted"></span><button id="connection-details" aria-controls="status-detail" aria-expanded="false" aria-label="View readback warnings" hidden>Details</button><button id="retry-read" hidden>Retry read</button></div>
+        <div class="connection-feedback" hidden><span id="connection-help" class="small muted"></span><button id="connection-details" aria-controls="status-detail" aria-expanded="false" aria-label="View readback warnings" hidden>Details</button></div>
         <div id="status-detail" class="connection-detail" hidden></div>
       <div class="control-surface">
       <div class="control-card"><div class="card-heading"><span>Noise control</span></div><div class="segments" role="group" aria-label="Noise control"><button data-noise="off" aria-pressed="false" disabled>Off</button><button data-noise="transparency" aria-pressed="false" disabled>Transparency</button><button data-noise="anc" aria-pressed="false" aria-controls="anc-levels" aria-expanded="false" disabled>ANC</button></div><div id="anc-levels" class="segments anc-levels" role="group" aria-label="ANC level" hidden><button data-anc="3" aria-pressed="false" disabled>Low</button><button data-anc="2" aria-pressed="false" disabled>Medium</button><button data-anc="1" aria-pressed="false" disabled>High</button><button data-anc="4" aria-pressed="false" disabled>Adaptive</button></div></div>
       <div class="control-card"><div class="card-heading"><span>Spatial audio</span><div class="control-meta"><button class="info-toggle" aria-label="About spatial audio" aria-describedby="spatial-info" data-info>i</button></div></div><div class="segments spatial-modes" role="group" aria-label="Spatial audio"><button data-spatial="0" aria-pressed="false" disabled>Off</button><button data-spatial="3" aria-pressed="false" disabled>Cinema</button><button data-spatial="2" aria-pressed="false" disabled>Concert</button></div><div id="spatial-info" class="info-tooltip" role="tooltip"><p class="small muted spatial-help">Changes are checked on the headphones after each selection.</p></div></div>
-      </div>
       </div>
     </section>
     <section id="eq" class="view eq-view" data-mode="presets" role="tabpanel" aria-labelledby="tab-eq" tabindex="0" hidden>
@@ -92,7 +91,6 @@
       </section>
       <p id="condition" hidden>Bass starting point · Custom EQ, ANC High, bass slider minimum, spatial off.</p>
       <div class="eq-footer">
-        <button id="device-eq-status" class="small muted" disabled>Connect to read the headphone EQ.</button>
         <div class="eq-actions"><button id="save-draft">Save profile</button><button id="auto-headroom">Auto headroom</button><button id="apply-eq" class="primary" disabled>Apply</button></div>
       </div>
     </section>
@@ -116,7 +114,7 @@
       <section class="view-bottom profile-device-tools" aria-label="Device EQ tools">
         <div class="card-heading"><span>Device EQ</span></div>
         <p id="snapshot-status" class="small invalid-draft" role="status" hidden></p>
-        <div class="recovery-actions"><button id="read-device" aria-label="Read headphone settings" title="Read headphone settings" disabled>Read</button><button id="use-device-eq" aria-label="Preview the headphone EQ" title="Preview the headphone EQ" disabled>Review</button><button id="restore-eq" aria-label="Restore original headphone EQ" title="Restore original headphone EQ" disabled>Restore</button></div>
+        <div class="recovery-actions"><button id="use-device-eq" aria-label="Preview the headphone EQ" title="Preview the headphone EQ" disabled>Review</button><button id="restore-eq" aria-label="Restore original headphone EQ" title="Restore original headphone EQ" disabled>Restore</button></div>
       </section>
     </section>
     <section id="settings" class="view settings-view" role="tabpanel" aria-labelledby="tab-settings" tabindex="0" hidden>

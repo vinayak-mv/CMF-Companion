@@ -91,6 +91,21 @@ async fn refresh_headphones(
 }
 
 #[tauri::command]
+async fn refresh_battery(
+    state: tauri::State<'_, BluetoothState>,
+) -> Result<ConnectionStatus, String> {
+    let controller = state.inner().0.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        controller
+            .lock()
+            .map_err(|_| "Bluetooth state unavailable.")?
+            .refresh_battery()
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
 async fn set_anc(
     mode: u8,
     state: tauri::State<'_, BluetoothState>,
@@ -270,6 +285,7 @@ pub fn run() {
             list_paired_devices,
             connect_headphones,
             refresh_headphones,
+            refresh_battery,
             disconnect_headphones,
             headphone_status,
             set_anc,

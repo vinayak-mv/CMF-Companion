@@ -36,19 +36,6 @@ let eqGraph = null;
 const deviceKey = () => connection.connected ? `${connection.device.address}|${connection.firmware}` : null;
 const cloneProfile = profile => JSON.parse(JSON.stringify(profile));
 const spatialNames = {0:'Off',2:'Concert',3:'Cinema'};
-
-function deviceSoundName() {
-  const eq = connection.eq;
-  if (!eq) return 'Unknown EQ';
-  if (eq.filters.every(filter => filter.gain === 0)) return 'Flat';
-  const same = (a,b) => Math.fround(a) === Math.fround(b);
-  for (const preset of [presets.punch, presets.deep]) {
-    const filters = tuningProfile(preset).filters;
-    if (filters.length === eq.filters.length && filters.every((filter,index) => filter.kind === eq.filters[index].kind
-      && ['frequency','gain','q'].every(key => same(filter[key],eq.filters[index][key])))) return preset.name;
-  }
-  return `Custom · ${eq.filters.length} bands`;
-}
 let pendingCondition = 'Imported draft · match ANC to the profile’s measurement condition.';
 
 function renderConnection() {
@@ -71,7 +58,6 @@ function renderConnection() {
   $('#scan-devices').textContent = connectionBusy ? 'Connecting…' : 'Connect headphones';
   $('#connect-headphones').disabled = !invoke || connectionBusy || !connected;
   $('#connect-headphones').textContent = connectionBusy ? 'Please wait…' : 'Disconnect';
-  $('#read-device').disabled = !connected || connectionBusy;
   $('#use-device-eq').disabled = !connected || !connection.eq || connectionBusy;
   const warnings = connected && connection.warnings?.length > 0;
   $('.connection-feedback').hidden = !warnings;
@@ -81,8 +67,6 @@ function renderConnection() {
     $('#connection-details').setAttribute('aria-expanded', 'false');
   }
   $('#connection-details').hidden = !warnings;
-  $('#retry-read').hidden = !warnings;
-  $('#retry-read').disabled = connectionBusy;
   const mode = connection.anc_mode;
   const ancNames = { 1: 'High', 2: 'Medium', 3: 'Low', 4: 'Adaptive', 5: 'Off', 7: 'Transparency' };
   const ancActive = connected && [1,2,3,4].includes(mode);
@@ -171,7 +155,27 @@ function connectionMessage(prefix) {
 function schedulePoll() {
   clearTimeout(pollTimer);
   if (connection.connected && !connectionBusy && !document.hidden && !$('#eq-confirm').open) {
-    pollTimer = setTimeout(() => readHeadphones(true), 15000);
+    // Battery-only ping; full settings are read once at connect time.
+    pollTimer = setTimeout(() => pollBattery(), 300000);
+  }
+}
+
+async function pollBattery() {
+  if (!invoke || connectionBusy || !connection.connected) return;
+  clearTimeout(pollTimer);
+  connectionBusy = true;
+  renderConnection();
+  try {
+    connection = await invoke('refresh_battery');
+  } catch (error) {
+    // Recover authoritative backend state instead of retaining a stale green header.
+    try { connection = await invoke('headphone_status'); }
+    catch { connection = { connected: false }; }
+    message(String(error.message ?? error), true);
+  } finally {
+    connectionBusy = false;
+    renderConnection();
+    schedulePoll();
   }
 }
 
@@ -201,30 +205,7 @@ async function scanDevices() {
   }
 }
 
-async function readHeadphones(quiet = false) {
-  if (!invoke || connectionBusy || !connection.connected) return;
-  clearTimeout(pollTimer);
-  connectionBusy = true;
-  renderConnection();
-  if (!quiet) message('Reading headphone settings…');
-  try {
-    connection = await invoke('refresh_headphones');
-    if (!quiet) connectionMessage('Headphone settings refreshed. Your editor draft is unchanged.');
-  } catch (error) {
-    // Recover authoritative backend state instead of retaining a stale green header.
-    try { connection = await invoke('headphone_status'); }
-    catch { connection = { connected: false }; }
-    message(String(error.message ?? error), true);
-  } finally {
-    connectionBusy = false;
-    renderConnection();
-    schedulePoll();
-  }
-}
-
 $('#scan-devices').onclick = scanDevices;
-$('#read-device').onclick = () => readHeadphones();
-$('#retry-read').onclick = () => readHeadphones();
 $('#connection-details').onclick = () => {
   $('#status-detail').textContent = connection.warnings.join('\n\n');
   $('#status-detail').hidden = !$('#status-detail').hidden;
@@ -566,13 +547,6 @@ function renderEqState() {
   $('#apply-eq').disabled = !canWrite || !valid || !connection.eq;
   $('#apply-eq').title = !invoke ? 'Open the desktop app to apply EQ.' : !connection.connected ? 'Connect your headphones first.' : !valid ? 'Check the preamp and band values.' : connection.snapshot_error || 'Review the selected device and EQ before applying.';
   $('#restore-eq').disabled = !canWrite || !connection.snapshot;
-  const eq = connection.eq;
-  const states = { verified: 'Last request matches readback', different: 'Readback differs from last request', uncertain: 'EQ uncertain · read again', pending: 'Waiting for readback' };
-  $('#device-eq-status').textContent = !invoke ? 'Browser preview · Apply and device reads need the desktop app.' : !connection.connected ? 'Connect to read the headphone EQ.'
-    : `${deviceSoundName()} · ${eq ? `${eq.filters.length} bands · ${eq.preamp} dB preamp` : 'Device EQ unavailable'}${states[connection.eq_write_state] ? ` · ${states[connection.eq_write_state]}` : ' · review values ↗'}`;
-  $('#device-eq-status').title = connection.eq_write_note || $('#device-eq-status').textContent;
-  $('#device-eq-status').disabled = connectionBusy || !connection.connected || (!eq && !connection.requested_eq);
-  $('#device-eq-status').classList.toggle('invalid-draft', ['different', 'uncertain'].includes(connection.eq_write_state));
   const snapshot = connection.snapshot;
   $('#snapshot-status').textContent = connection.snapshot_error || '';
   $('#snapshot-status').hidden = !connection.snapshot_error;
@@ -761,7 +735,7 @@ async function reviewEq(action, value = null) {
     const target = { address: connection.device.address, firmware: connection.firmware };
     let profile = action === 'restore' ? await invoke('snapshot_profile') : action === 'apply' ? await invoke('validate_profile', {profile: draft()}) : null;
     writeReview = {action, profile, value, key: deviceKey(), ...target};
-    $('#eq-confirm-title').textContent = action === 'inspect' ? 'Headphone EQ readback' : action === 'restore' ? 'Restore your original EQ' : 'Review your EQ';
+    $('#eq-confirm-title').textContent = action === 'restore' ? 'Restore your original EQ' : 'Review your EQ';
     $('#eq-confirm-target').textContent = `${connection.device.name} · ${target.address} · firmware ${target.firmware}`;
     $('#eq-confirm-summary').textContent = profile ? `${profile.name} · ${profile.filters.length} bands · ${profile.preamp} dB preamp.` : connection.eq_write_note || 'Stored filter values. Audible preset activation is not detected.';
     $('#eq-confirm-bands').replaceChildren();
@@ -770,16 +744,13 @@ async function reviewEq(action, value = null) {
       if (connection.requested_eq) appendProfileRows(connection.requested_eq, 'Last requested');
       if (connection.eq) appendProfileRows(connection.eq, 'Read from headphones');
     }
-    $('#eq-confirm-backup').textContent = action === 'inspect' ? 'Readback shows stored values; it does not measure sound or prove that Custom mode is active.'
-      : action === 'restore' ? 'Restores saved EQ values for this device and firmware. Preset selection, ANC, slider position and your draft are unchanged.'
+    $('#eq-confirm-backup').textContent = action === 'restore' ? 'Restores saved EQ values for this device and firmware. Preset selection, ANC, slider position and your draft are unchanged.'
       : connection.snapshot ? 'Your existing original EQ backup will be kept.' : 'The current headphone EQ will be read and saved before applying.';
     $('#custom-mode-label').textContent = 'Custom EQ is selected in Nothing X.';
-    $('.custom-mode-check').hidden = action === 'inspect';
-    $('#custom-mode-confirmed').required = action !== 'inspect';
+    $('#custom-mode-confirmed').required = true;
     $('#custom-mode-confirmed').checked = false;
-    $('#confirm-eq').hidden = action === 'inspect';
     $('#confirm-eq').textContent = action === 'restore' ? 'Restore and verify' : 'Apply and verify';
-    $('#cancel-eq').textContent = action === 'inspect' ? 'Close' : 'Cancel';
+    $('#cancel-eq').textContent = 'Cancel';
     $('#eq-confirm-result').textContent = '';
     $('#eq-confirm').showModal();
   } catch (error) { message(String(error.message ?? error), true); }
@@ -793,7 +764,6 @@ for (const button of document.querySelectorAll('[data-spatial]')) button.onclick
   commitDeviceChange({action:'spatial',value:mode,address:connection.device.address,firmware:connection.firmware});
 };
 $('#restore-eq').onclick = () => reviewEq('restore');
-$('#device-eq-status').onclick = () => reviewEq('inspect');
 $('#cancel-eq').onclick = () => { if (!connectionBusy) $('#eq-confirm').close(); };
 $('#eq-confirm').addEventListener('cancel', event => { if (connectionBusy) event.preventDefault(); });
 $('#eq-confirm').addEventListener('close', () => { writeReview = null; schedulePoll(); });
@@ -831,7 +801,7 @@ async function commitDeviceChange(review, fromDialog = false) {
 }
 $('#eq-confirm-form').onsubmit = event => {
   event.preventDefault();
-  if (!writeReview || writeReview.action === 'inspect' || connectionBusy || !$('#custom-mode-confirmed').checked) return;
+  if (!writeReview || connectionBusy || !$('#custom-mode-confirmed').checked) return;
   commitDeviceChange(writeReview, true);
 };
 

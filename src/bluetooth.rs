@@ -116,6 +116,38 @@ impl Controller {
         Ok(self.status())
     }
 
+    /// Periodic lightweight poll: one battery request doubles as the link
+    /// liveness check, so a transport failure drops the session.
+    pub fn refresh_battery(&mut self) -> Result<ConnectionStatus, String> {
+        let session = self
+            .session
+            .as_mut()
+            .ok_or("Headphones are not connected.")?;
+        let bytes = match session.request(0xc007, &[], 3) {
+            Ok(bytes) => bytes,
+            Err(error) => {
+                self.disconnect();
+                return Err(format!(
+                    "Control connection lost: {error} Reconnect the headphones."
+                ));
+            }
+        };
+        // A decodable-but-empty payload keeps the link and only drops the value.
+        match protocol::decode_battery(&bytes) {
+            Ok(records) => {
+                self.status.warnings.retain(|warning| !warning.starts_with("Battery "));
+                apply_battery(records, &mut self.status);
+            }
+            Err(error) => {
+                self.status.warnings.retain(|warning| !warning.starts_with("Battery "));
+                self.status
+                    .warnings
+                    .push(format!("Battery unavailable: {error}"));
+            }
+        }
+        Ok(self.status())
+    }
+
     pub fn set_anc(&mut self, mode: u8) -> Result<ConnectionStatus, String> {
         if !matches!(mode, 1 | 2 | 3 | 4 | 5 | 7) {
             return Err("Unsupported ANC mode.".into());
@@ -378,6 +410,32 @@ pub fn paired_devices() -> Result<Vec<PairedDevice>, String> {
     platform::paired_devices()
 }
 
+/// Prefers the headphone battery record IDs; falls back to the only record when
+/// the device reports a single unknown ID. Ambiguity is surfaced, never guessed.
+fn apply_battery(records: Vec<protocol::Battery>, status: &mut ConnectionStatus) {
+    status.battery = None;
+    let candidates: Vec<_> = records
+        .iter()
+        .filter(|record| matches!(record.device_id, 4 | 5))
+        .collect();
+    let chosen = match candidates.len() {
+        1 => Some(candidates[0]),
+        0 if records.len() == 1 => Some(&records[0]),
+        _ => None,
+    };
+    match chosen {
+        Some(record) => {
+            status.battery = Some(BatteryStatus {
+                percent: record.percent,
+                charging: record.charging,
+            });
+        }
+        None => status
+            .warnings
+            .push("Battery record ID is unknown or ambiguous.".into()),
+    }
+}
+
 fn read_text(bytes: &[u8]) -> Result<String, String> {
     let value = std::str::from_utf8(bytes)
         .map_err(|_| "Headphones returned invalid version text.")?
@@ -447,24 +505,7 @@ impl Session {
             .request(0xc007, &[], 3)
             .and_then(|bytes| protocol::decode_battery(&bytes))
         {
-            Ok(records) => {
-                // Both IDs are headphone candidates in the reference parser; never
-                // silently select one when the device reports conflicting records.
-                let candidates: Vec<_> = records
-                    .iter()
-                    .filter(|r| matches!(r.device_id, 4 | 5))
-                    .collect();
-                if candidates.len() == 1 {
-                    status.battery = Some(BatteryStatus {
-                        percent: candidates[0].percent,
-                        charging: candidates[0].charging,
-                    });
-                } else {
-                    status
-                        .warnings
-                        .push("Battery record ID is unknown or ambiguous.".into());
-                }
-            }
+            Ok(records) => apply_battery(records, status),
             Err(error) => status
                 .warnings
                 .push(format!("Battery unavailable: {error}")),

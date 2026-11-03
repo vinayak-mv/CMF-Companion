@@ -147,23 +147,28 @@ pub struct Battery {
 
 pub fn decode_battery(payload: &[u8]) -> Result<Vec<Battery>, String> {
     let count = usize::from(*payload.first().ok_or("Empty battery payload.")?);
-    if payload.len() != 1 + count * 2 {
-        return Err("Invalid battery record length.".into());
-    }
-    payload[1..]
+    // The count byte is advisory: some firmwares report a stale count, so trust
+    // the record bytes actually present. Invalid percentages are dropped.
+    let records: Vec<Battery> = payload[1..]
         .chunks_exact(2)
+        .take(if count > 0 { count } else { usize::MAX })
         .map(|pair| {
             let percent = pair[1] & 0x7f;
             if percent > 100 {
-                return Err("Invalid battery percentage.".into());
+                return None;
             }
-            Ok(Battery {
+            Some(Battery {
                 device_id: pair[0],
                 percent,
                 charging: pair[1] & 0x80 != 0,
             })
         })
-        .collect()
+        .flatten()
+        .collect();
+    if records.is_empty() {
+        return Err("No valid battery records in payload.".into());
+    }
+    Ok(records)
 }
 
 /// Preserves unknown mode values for future transport/state handling.
@@ -231,8 +236,10 @@ mod tests {
                 charging: true
             }]
         );
-        assert!(decode_battery(&[2, 5, 88]).is_err());
+        assert!(decode_battery(&[2, 5, 88]).is_ok());
+        assert_eq!(decode_battery(&[2, 5, 88]).unwrap()[0].device_id, 5);
         assert!(decode_battery(&[1, 5, 127]).is_err());
+        assert!(decode_battery(&[0]).is_err());
         assert_eq!(decode_anc(&[2, 1, 0, 1, 7, 0]).unwrap(), Some(7));
         assert_eq!(decode_anc(&[1, 99, 0]).unwrap(), Some(99));
         assert_eq!(decode_spatial(&[1]).unwrap(), (true, None));

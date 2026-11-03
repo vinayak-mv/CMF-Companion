@@ -119,6 +119,17 @@ This is the part of the codebase that matters most; preserve it when touching th
 - Spatial writes are restricted to a device whose name contains `cmf headphone pro`; unknown
   mode values are surfaced, never coerced to Off.
 
+### Connection polling
+
+Full settings (EQ, battery, ANC, spatial) are read exactly once, at connect time
+(`read_settings` inside `Controller::connect`). There is no periodic full refresh and no
+manual re-read button; recovery from bad readbacks is disconnect/reconnect. The only
+periodic traffic is `refresh_battery` — a single `0xc007` battery request every 5 minutes
+while connected, visible, idle, and dialog-free — which doubles as the link liveness check
+(a transport failure drops the session and the UI offers reconnect). `refresh_headphones`
+still exists as a Tauri command but has no UI caller. Battery parsing is tolerant of a
+stale record-count byte and unknown single-record IDs (see `decode_battery`/`apply_battery`).
+
 ### UI
 
 `ui/index.html` + `app.mjs`, split into `tuning.mjs` (presets, tone-slider→filter mapping,
