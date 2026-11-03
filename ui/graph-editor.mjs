@@ -4,10 +4,10 @@ import { responseDb } from './response.mjs';
 // This editor has no native invoke: all changes are drafts until explicit Apply.
 export function createEqGraph(svg, callbacks) {
   let geometry = null, handles = [], drag = null, frame = 0;
-  const readout = document.querySelector('#graph-readout');
   const clamp = (value, lo, hi) => Math.max(lo, Math.min(hi, value));
-  const x = hz => 42 + Math.log(hz / 20) / Math.log(1000) * 858;
-  const y = (db, g) => 12 + (g.hi - db) / (g.hi - g.lo) * (g.bottom - 12);
+  const plotLeft = 42, plotRight = 900, plotTop = 12;
+  const x = hz => plotLeft + Math.log(hz / 20) / Math.log(1000) * (plotRight - plotLeft);
+  const y = (db, g) => plotTop + (g.hi - db) / (g.hi - g.lo) * (g.bottom - plotTop);
   const label = (index, band) => `${String(index + 1).padStart(2, '0')} · ${band.frequency} Hz · ${band.gain > 0 ? '+' : ''}${band.gain} dB`;
 
   function point(event) {
@@ -28,14 +28,22 @@ export function createEqGraph(svg, callbacks) {
     const centres = rows.map((band, index) => band.enabled ? { index, band, db: responseDb(profile.filters, profile.preamp, band.frequency) } : null).filter(Boolean);
     if ([...points, ...centres].some(p => !Number.isFinite(p.db))) throw Error('These filter values cannot be plotted.');
     const values = [...points, ...centres].map(p => p.db);
+    // Frame rounds outward to clean 1.5/3/6/12 dB steps and always keeps the
+    // 0 dB reference inside the view, so gridlines land on readable values.
+    // At least -6..+6 stays visible so one drag gesture covers the usual range.
+    const paddedLo = Math.min(...values) - 2, paddedHi = Math.max(...values) + 2;
+    const step = [1.5, 3, 6, 12].find(s => (Math.max(paddedHi, 6) - Math.min(paddedLo, -6) + 4) / s <= 6) ?? 12;
     geometry = drag?.geometry ?? {
-      height, bottom: height - 32,
-      lo: Math.floor(Math.min(-12, Math.min(...values) - 3) / 6) * 6,
-      hi: Math.ceil(Math.max(6, Math.max(...values) + 3) / 6) * 6,
+      height, bottom: height - 40,
+      lo: Math.floor(Math.min(paddedLo, -6) / step) * step,
+      hi: Math.ceil(Math.max(paddedHi, 6) / step) * step,
+      step,
       width: svg.clientWidth, clientHeight: svg.clientHeight,
     };
     const g = geometry;
     svg.setAttribute('viewBox', `0 0 920 ${height}`);
+    const matrix = svg.getScreenCTM();
+    const unit = matrix ? 1 / Math.hypot(matrix.a, matrix.b) : 920 / (svg.clientWidth || 920);
     svg.replaceChildren();
     const add = (tag, attributes, text) => {
       const el = document.createElementNS('http://www.w3.org/2000/svg', tag);
@@ -43,25 +51,26 @@ export function createEqGraph(svg, callbacks) {
       if (text !== undefined) el.textContent = text;
       svg.append(el); return el;
     };
-    for (let i = 0; i <= 4; i++) {
-      const db = g.lo + (g.hi - g.lo) * i / 4;
-      add('line', {x1:42, x2:900, y1:y(db,g), y2:y(db,g), class:Math.abs(db)<.01?'zero-line':'grid-line'});
-      add('text', {x:32, y:y(db,g)+3, 'text-anchor':'end', class:'axis-label'}, db.toFixed(0));
+    const divisions = Math.round((g.hi - g.lo) / g.step);
+    for (let i = 0; i <= divisions; i++) {
+      const db = Math.round((g.lo + i * g.step) * 10) / 10;
+      const zero = Math.abs(db) < 1e-6;
+      add('line', {x1:plotLeft, x2:plotRight, y1:y(db,g), y2:y(db,g), class:zero?'zero-line':'grid-line'});
+      add('text', {x:plotLeft-10, y:y(db,g)+3, 'text-anchor':'end', class:'axis-label'}, zero ? '0' : (g.step % 1 ? db.toFixed(1) : db.toFixed(0)));
     }
     for (const hz of [20,50,100,200,500,1000,2000,5000,10000,20000]) {
-      add('line', {x1:x(hz), x2:x(hz), y1:12, y2:g.bottom, class:'grid-line'});
-      add('text', {x:x(hz), y:height-9, 'text-anchor':'middle', class:'axis-label'}, hz>=1000?`${hz/1000}k`:`${hz}`);
+      add('line', {x1:x(hz), x2:x(hz), y1:plotTop, y2:g.bottom, class:'grid-line'});
+      // Edge frequencies stay as gridlines only; their labels crowd the corners.
+      if (hz > 20 && hz < 20000) add('text', {x:x(hz), y:height-10, 'text-anchor':'middle', class:'axis-label'}, hz>=1000?`${hz/1000}k`:`${hz}`);
     }
     const path = points.map((p,i) => `${i?'L':'M'}${x(p.hz).toFixed(2)},${y(p.db,g).toFixed(2)}`).join(' ');
-    add('path', {d:`${path} L900,${g.bottom} L42,${g.bottom} Z`, class:'curve-fill'});
+    add('path', {d:`${path} L${plotRight},${g.bottom} L${plotLeft},${g.bottom} Z`, class:'curve-fill'});
     add('path', {d:path, class:'curve'});
-    const matrix = svg.getScreenCTM();
-    const unit = matrix ? 1 / Math.hypot(matrix.a, matrix.b) : 920 / (svg.clientWidth || 920);
     handles = editable ? centres.map(p => ({...p, x:x(p.band.frequency), y:y(p.db,g)})) : [];
     // Selected point draws last; exact overlaps can also be selected in the band strip.
     for (const handle of [...handles].sort((a,b) => Number(a.index===selectedBand)-Number(b.index===selectedBand))) {
       const selected = handle.index === selectedBand;
-      if (selected) add('line', {x1:handle.x,x2:handle.x,y1:12,y2:g.bottom,class:'band-guide'});
+      if (selected) add('line', {x1:handle.x,x2:handle.x,y1:plotTop,y2:g.bottom,class:'band-guide'});
       const node = add('circle', {cx:handle.x,cy:handle.y,r:(selected?9:7)*unit,
         class:`graph-handle${selected?' selected':''}`, 'data-band':handle.index, role:'button',
         tabindex:selected?0:-1, 'aria-label':`Edit band ${handle.index+1}, ${handle.band.frequency} Hz, ${handle.band.gain} dB. Arrow keys adjust; Enter opens settings.`});
@@ -71,8 +80,6 @@ export function createEqGraph(svg, callbacks) {
         'font-size':8*unit,class:'graph-handle-number'}, String(handle.index+1));
     }
     if (focused !== undefined) svg.querySelector(`[data-band="${focused}"]`)?.focus({preventScroll:true});
-    const selected = rows[selectedBand];
-    readout.textContent = !editable ? 'Preset preview · Draft' : drag || !document.querySelector('#band-editor').hidden ? label(selectedBand,selected) : 'Drag points · Draft';
   }
 
   function move() {
@@ -83,12 +90,12 @@ export function createEqGraph(svg, callbacks) {
     const p = point(event); if (!p) return;
     const g = drag.geometry;
     const frequency = Math.abs(event.clientX-drag.startX)<1 ? drag.originalFrequency
-      : Math.round(20 * 1000 ** ((clamp(p.x-drag.offsetX,42,900)-42)/858));
-    const targetY = clamp(p.y-drag.offsetY,12,g.bottom);
+      : Math.round(20 * 1000 ** ((clamp(p.x-drag.offsetX,plotLeft,plotRight)-plotLeft)/(plotRight-plotLeft)));
+    const targetY = clamp(p.y-drag.offsetY,plotTop,g.bottom);
     const { rows } = callbacks.state(), band = rows[drag.index];
     // Keep horizontal frequency and vertical gain independent, even with overlapping bands.
     // RBJ shelves have half their gain at the cutoff; peaks have their full gain.
-    const rawGain = drag.originalGain + (drag.startCentreY-targetY)/(g.bottom-12)*(g.hi-g.lo)*(band.kind==='PK'?1:2);
+    const rawGain = drag.originalGain + (drag.startCentreY-targetY)/(g.bottom-plotTop)*(g.hi-g.lo)*(band.kind==='PK'?1:2);
     if (!Number.isFinite(rawGain)) return;
     const gain = Math.abs(event.clientY-drag.startY)<1 ? drag.originalGain
       : Math.round(clamp(rawGain,Math.min(-24,drag.originalGain),Math.max(24,drag.originalGain))*10)/10;
@@ -154,9 +161,12 @@ export function createEqGraph(svg, callbacks) {
     else gain=Math.round(clamp(gain+(event.key==='ArrowUp'?1:-1)*(event.shiftKey ? 0.1 : 0.5),Math.min(-24,gain),Math.max(24,gain))*10)/10;
     callbacks.edit(index,frequency,gain);
   });
+  svg.addEventListener('keyup', event => {
+    if (['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(event.key)) callbacks.refresh();
+  });
   return {
     draw, cancel:()=>finish(true), get dragging(){return Boolean(drag);},
-    clear(){finish(true);geometry=null;handles=[];svg.replaceChildren();readout.textContent='Check band values';},
+    clear(){finish(true);geometry=null;handles=[];svg.replaceChildren();},
     resize(){if(drag && (svg.clientWidth!==drag.geometry.width || svg.clientHeight!==drag.geometry.clientHeight))finish(true);draw(callbacks.state().profile);},
   };
 }

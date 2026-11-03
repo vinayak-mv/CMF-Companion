@@ -1,5 +1,5 @@
 import { createEqGraph } from './graph-editor.mjs';
-import { presets, tuningProfile, headroom, exportProfile } from './tuning.mjs';
+import { presets, tuningProfile, headroom } from './tuning.mjs';
 import { createProfileLibrary } from './profile-library.mjs';
 import { responseDb } from './response.mjs';
 
@@ -14,7 +14,8 @@ const bassCondition = 'Bass starting point · Custom EQ, ANC High, bass slider m
 let name = startingProfile.name, skipped = [], pending = null, importVersion = 0;
 let rows = startingProfile.filters.map(filter => ({...filter, enabled: true}));
 while (rows.length < 8) rows.push({id:rows.length+1,kind:'PK',frequency:1000,gain:0,q:1,enabled:false});
-let toneValues = {...presets.flat}, previousDraft = null, writeReview = null, notificationTimer;
+let toneValues = {...presets.flat}, writeReview = null, notificationTimer;
+const undoDrafts = [], redoDrafts = [];
 let selectedBand = 0;
 let connection = { connected: false }, connectionBusy = false, pollTimer;
 if (connectedPreview) {
@@ -257,12 +258,20 @@ $('#use-device-eq').onclick = () => {
   pendingCondition = 'Device EQ draft · read from headphones; no settings applied.';
   $('#preview-label').textContent = 'DEVICE EQ READBACK';
   $('#import-name').textContent = pending.name;
-  $('#import-summary').textContent = `${connection.device.name} (${connection.device.address}), firmware ${connection.firmware}. ${pending.filters.length}/8 bands · ${pending.preamp} dB preamp. Use in editor replaces your draft only.`;
+  $('#import-summary').textContent = `${pending.filters.length} bands · ${pending.preamp} dB preamp`;
   $('#import-preview').hidden = false;
   message('Review the headphone readback before replacing your editor draft.');
 };
 
 document.addEventListener('visibilitychange', schedulePoll);
+document.addEventListener('keydown', () => {
+  $('#eq').classList.add('keyboard-input');
+  $('#profiles').classList.add('keyboard-input');
+  $('#settings').classList.add('keyboard-input');
+}, true);
+$('#profiles').addEventListener('pointerdown', () => $('#profiles').classList.remove('keyboard-input'), true);
+$('#settings').addEventListener('pointerdown', () => $('#settings').classList.remove('keyboard-input'), true);
+document.addEventListener('pointerdown', () => $('#eq').classList.remove('keyboard-input'), true);
 
 function setEqMode(mode) {
   eqGraph?.cancel();
@@ -271,12 +280,10 @@ function setEqMode(mode) {
   $('#eq-presets').hidden = mode !== 'presets';
   $('#eq-custom').hidden = mode !== 'custom';
   $('#band-count').hidden = mode !== 'custom';
-  $('#preamp').readOnly = mode !== 'custom';
   $('#response').tabIndex = mode === 'custom' ? 0 : -1;
   $('#response').setAttribute('aria-label', mode === 'custom'
     ? 'Editable EQ response. Drag a numbered point to change frequency and gain. Use the band controls for Q.'
     : 'Read-only preset EQ response. Switch to Custom to edit the graph.');
-  $('#graph-readout').title = mode === 'custom' ? 'Drag points to edit frequency and gain. Apply to listen.' : 'Preset response preview. Apply to listen.';
   for (const button of document.querySelectorAll('[data-eq-mode]')) {
     button.setAttribute('aria-pressed', String(button.dataset.eqMode === mode));
   }
@@ -328,7 +335,7 @@ for (const [id, action] of [['minimize', 'minimize'], ['close', 'close']]) {
 }
 $('#pin').disabled = !appWindow;
 $('#settings-pin').disabled = !appWindow;
-$('.desktop-setting-note').hidden = Boolean(appWindow);
+$('#settings-pin').title = appWindow ? 'Keep the companion above other windows' : 'Available in the desktop app';
 $('#settings-pin').onclick = () => $('#pin').click();
 $('#pin').onclick = async () => {
   $('#pin').disabled = true;
@@ -353,7 +360,7 @@ $('#choose-profile').onclick = async () => {
     if (!profile || version !== importVersion) return;
     pending = profile; pendingCondition = 'Imported draft · match ANC to the profile’s measurement condition.';
     $('#preview-label').textContent = 'IMPORT PREVIEW'; $('#import-name').textContent = profile.name;
-    $('#import-summary').textContent = `${profile.filters.length}/8 bands · ${profile.preamp} dB preamp. Confirm to replace your draft.`;
+    $('#import-summary').textContent = `${profile.filters.length} bands · ${profile.preamp} dB preamp`;
     $('#import-preview').hidden = false;
   } catch (error) { if (version === importVersion) message(String(error.message ?? error), true); }
 };
@@ -377,7 +384,7 @@ function message(text, error = false) {
 }
 
 function draft() {
-  if (!$('#preamp').checkValidity()) throw Error('Enter a finite preamp value.');
+  if (!$('#preamp').checkValidity()) throw Error('Enter a finite preamp value no higher than +10 dB.');
   for (const [index, filter] of rows.entries()) {
     if (filter.enabled && !validBand(filter)) {
       throw Error(`Check band ${index + 1}: use 20–20,000 Hz, a finite gain, and Q greater than zero.`);
@@ -397,6 +404,7 @@ function validBand(filter) {
 function closeBandEditor(restoreFocus = true) {
   const wasOpen = !$('#band-editor').hidden;
   $('#band-editor').hidden = true;
+  $('#tone-panel').hidden = false;
   for (const button of $('#bands').children) {
     button.setAttribute('aria-expanded', 'false');
     button.setAttribute('aria-pressed', 'false');
@@ -405,10 +413,9 @@ function closeBandEditor(restoreFocus = true) {
 }
 
 function openBandEditor(index) {
-  $('#tone-panel').hidden = true;
-  $('#toggle-tone').setAttribute('aria-expanded', 'false');
   selectGraphBand(index);
   $('#band-editor').hidden = false;
+  $('#tone-panel').hidden = true;
   update();
   $('#band-enabled').focus();
 }
@@ -474,6 +481,7 @@ function update() {
     eqGraph?.draw(current);
   } catch(error){eqGraph?.clear();}
   renderEqState();
+  renderDraftHistory();
 }
 
 function useProfile(profile, condition = 'Imported draft · match ANC to the profile’s measurement condition.', tone = null) {
@@ -490,39 +498,47 @@ function useProfile(profile, condition = 'Imported draft · match ANC to the pro
   setEqMode(tone ? 'presets' : 'custom');
 }
 
-$('#preamp').oninput=() => { update(); };
+$('#preamp').addEventListener('focus', beginDraftGesture);
+$('#preamp').addEventListener('blur', endDraftGesture);
+$('#preamp').oninput = () => { beginDraftGesture(); update(); };
+for (const [id, delta] of [['preamp-down', -0.5], ['preamp-up', 0.5]]) {
+  $(`#${id}`).onclick = () => {
+    const current = $('#preamp').valueAsNumber;
+    if (!Number.isFinite(current)) return;
+    changeDraft(() => {
+      $('#preamp').value = Math.min(10, Number((current + delta).toFixed(6)));
+      update();
+    });
+  };
+}
 $('#close-band').onclick = () => { closeBandEditor(); update(); };
-$('#band-enabled').onchange = event => { toneValues = null; syncToneControls(); rows[selectedBand].enabled = event.target.checked; update(); };
-$('#band-kind').onchange = event => { toneValues = null; syncToneControls(); rows[selectedBand].kind = event.target.value; update(); };
+for (const id of ['band-enabled', 'band-kind', 'band-frequency', 'band-gain', 'band-q']) {
+  $(`#${id}`).addEventListener('focus', beginDraftGesture);
+  $(`#${id}`).addEventListener('blur', endDraftGesture);
+}
+$('#band-enabled').onchange = event => { beginDraftGesture(); rows[selectedBand].enabled = event.target.checked; update(); };
+$('#band-kind').onchange = event => { beginDraftGesture(); rows[selectedBand].kind = event.target.value; update(); };
 for (const field of ['frequency', 'gain', 'q']) {
   $(`#band-${field}`).oninput = event => {
     const input = event.target;
+    beginDraftGesture();
     rows[selectedBand][field] = input.value === '' ? NaN : Number(input.value);
-    toneValues = null;
-    syncToneControls();
     input.setCustomValidity(field === 'q' && rows[selectedBand].q <= 0 ? 'Q must be greater than zero.' : '');
     update();
   };
 }
 function syncToneControls() {
+  const values = toneValues ?? presets.flat;
   for (const key of ['deep', 'punch', 'clarity']) {
-    const slider = $(`#tone-${key}`);
-    slider.disabled = !toneValues;
-    if (toneValues) slider.value = toneValues[key];
-    $(`#tone-${key}-value`).value = toneValues ? `${slider.value}%` : '—';
+    $(`#tone-${key}`).value = values[key];
+    $(`#tone-${key}-value`).value = `${values[key]}%`;
   }
-  $('#tone-help').textContent = toneValues
-    ? Object.values(toneValues).filter(value => typeof value === 'number').every(value => value === 0)
-      ? 'Flat bands · preamp is set separately.'
-      : 'Relative bass tuning · your preamp stays unchanged.'
-    : 'Advanced/imported draft · choose a preset to use sound controls.';
   for (const button of document.querySelectorAll('[data-preset]')) {
     button.setAttribute('aria-pressed', String(Boolean(toneValues && name === presets[button.dataset.preset].name)));
   }
 }
 
 function renderEqState() {
-  $('#toggle-tone').textContent = $('#tone-panel').hidden ? 'Tune sound' : 'Close tuning';
   let valid = false;
   try {
     const profile = draft();
@@ -531,25 +547,21 @@ function renderEqState() {
       const estimate = headroom(profile);
       $('#headroom-status').textContent = `Estimated peak ${estimate.outputPeak > 0 ? '+' : ''}${estimate.outputPeak.toFixed(1)} dB · draft${estimate.outputPeak > 0 ? ' · clipping possible' : ''}`;
       $('#headroom-status').classList.toggle('invalid-draft', estimate.outputPeak > 0);
-      $('#headroom-status').title = `Informational 48 kHz response estimate; it does not block Apply or measure loudness. Auto headroom optionally sets preamp to ${estimate.recommended} dB.`;
+      $('#headroom-recommended').textContent = `Auto headroom sets the preamp to ${estimate.recommended} dB.`;
       $('#auto-headroom').disabled = false;
     } catch {
       $('#headroom-status').textContent = 'Peak estimate unavailable · manual EQ';
-      $('#headroom-status').title = 'The graph model cannot estimate these values. You can still apply a valid profile.';
+      $('#headroom-recommended').textContent = '';
       $('#headroom-status').classList.remove('invalid-draft');
       $('#auto-headroom').disabled = true;
     }
     $('#save-draft').disabled = !invoke || Boolean(profileLibrary?.busy);
-    $('#save-profile-from-editor').disabled = $('#save-draft').disabled;
-    $('#export-draft').disabled = false;
   } catch (error) {
     $('#headroom-status').textContent = error.message;
-    $('#headroom-status').title = error.message;
+    $('#headroom-recommended').textContent = '';
     $('#headroom-status').classList.add('invalid-draft');
     $('#auto-headroom').disabled = true;
     $('#save-draft').disabled = true;
-    $('#save-profile-from-editor').disabled = true;
-    $('#export-draft').disabled = true;
   }
   const canWrite = Boolean(invoke && connection.connected && !connectionBusy && connection.firmware && !connection.snapshot_error);
   const currentGain = connection.eq?.preamp;
@@ -559,7 +571,6 @@ function renderEqState() {
   $('#undo-gain').disabled = !gainReady || !connection.gain_undo;
   $('#undo-gain').hidden = !connection.gain_undo;
   $('#gain-value').value = Number.isFinite(currentGain) ? `${currentGain > 0 ? '+' : ''}${Number(currentGain.toFixed(1))} dB` : '— dB';
-  $('#active-sound').textContent = connection.connected ? `Headphones: ${deviceSoundName()}` : 'Headphones: not connected';
   $('#gain-help').textContent = connection.gain_error || (!invoke ? 'Desktop app required. This preview does not change sound.'
     : gainConsentKey === deviceKey() ? 'EQ kept. Boost may clip or have no audible effect.' : 'EQ bands stay unchanged · 1 dB steps. First use asks once.');
   try {
@@ -576,83 +587,132 @@ function renderEqState() {
   const eq = connection.eq;
   const states = { verified: 'Last request matches readback', different: 'Readback differs from last request', uncertain: 'EQ uncertain · read again', pending: 'Waiting for readback' };
   $('#device-eq-status').textContent = !invoke ? 'Browser preview · Apply and device reads need the desktop app.' : !connection.connected ? 'Connect to read the headphone EQ.'
-    : `${eq ? `Device: ${eq.filters.length} bands · ${eq.preamp} dB preamp` : 'Device EQ unavailable'}${states[connection.eq_write_state] ? ` · ${states[connection.eq_write_state]}` : ' · review values ↗'}`;
+    : `${deviceSoundName()} · ${eq ? `${eq.filters.length} bands · ${eq.preamp} dB preamp` : 'Device EQ unavailable'}${states[connection.eq_write_state] ? ` · ${states[connection.eq_write_state]}` : ' · review values ↗'}`;
   $('#device-eq-status').title = connection.eq_write_note || $('#device-eq-status').textContent;
   $('#device-eq-status').disabled = connectionBusy || !connection.connected || (!eq && !connection.requested_eq);
   $('#device-eq-status').classList.toggle('invalid-draft', ['different', 'uncertain'].includes(connection.eq_write_state));
   const snapshot = connection.snapshot;
-  $('#snapshot-status').textContent = connection.snapshot_error || (snapshot
-    ? `Original EQ: ${snapshot.bands} bands · ${snapshot.preamp} dB · saved ${new Date(snapshot.captured_at * 1000).toLocaleString()}.`
-    : 'An original EQ backup is saved before your first Apply. Existing backups are kept.');
+  $('#snapshot-status').textContent = connection.snapshot_error || '';
+  $('#snapshot-status').hidden = !connection.snapshot_error;
+  $('#restore-eq').title = snapshot
+    ? `Restore original EQ · ${snapshot.bands} bands · ${snapshot.preamp} dB · saved ${new Date(snapshot.captured_at * 1000).toLocaleString()}`
+    : 'An original EQ backup is saved before your first Apply.';
 }
 
 function captureDraft() {
-  return { profile: draft(), condition: $('#condition').textContent, tone: toneValues ? {...toneValues} : null };
+  return { profile: draft(), condition: $('#condition').textContent, tone: toneValues ? {...toneValues} : null, mode: $('#eq').dataset.mode };
+}
+
+// Keep disabled rows and invalid in-progress fields so undo/redo restores the whole editor.
+function captureDraftState() {
+  return { name, rows: rows.map(row => ({...row})), skipped: [...skipped], preamp: $('#preamp').value,
+    condition: $('#condition').textContent, tone: toneValues ? {...toneValues} : null,
+    mode: $('#eq').dataset.mode, selectedBand };
+}
+function draftChanged(previous) {
+  const content = ({mode, selectedBand, ...state}) => JSON.stringify(state);
+  return content(previous) !== content(captureDraftState());
+}
+function restoreDraftState(state) {
+  eqGraph?.cancel();
+  closeBandEditor(false);
+  name = state.name; rows = state.rows.map(row => ({...row})); skipped = [...state.skipped];
+  toneValues = state.tone ? {...state.tone} : null; selectedBand = state.selectedBand;
+  $('#preamp').value = state.preamp; $('#condition').textContent = state.condition;
+  renderBands(); selectGraphBand(selectedBand); syncToneControls(); setEqMode(state.mode); update();
+}
+// One undo step per gesture: sliders, band fields and graph drags capture once at the start.
+let draftGesture = null;
+function renderDraftHistory() {
+  const changing = draftGesture && draftChanged(draftGesture);
+  $('#undo-draft').disabled = !undoDrafts.length && !changing;
+  $('#redo-draft').disabled = !redoDrafts.length || Boolean(changing);
+  const preamp = $('#preamp').valueAsNumber;
+  $('#preamp-down').disabled = !Number.isFinite(preamp);
+  $('#preamp-up').disabled = !Number.isFinite(preamp) || preamp >= 10;
+}
+function recordDraftChange(previous) {
+  if (draftChanged(previous)) { undoDrafts.push(previous); redoDrafts.length = 0; }
+  renderDraftHistory();
+}
+function beginDraftGesture() { draftGesture ??= captureDraftState(); }
+function endDraftGesture() {
+  const previous = draftGesture; draftGesture = null;
+  if (previous) recordDraftChange(previous);
+}
+function changeDraft(change) {
+  endDraftGesture();
+  const previous = captureDraftState();
+  change();
+  recordDraftChange(previous);
+}
+window.addEventListener('blur', () => { if (!eqGraph?.dragging) endDraftGesture(); });
+
+// Custom mode: tone sliders stay relative to the current balance and bake the
+// change into the enabled bands, so the graph always shows the true draft.
+function applyTonePull(values) {
+  beginDraftGesture();
+  try {
+    const from = tuningProfile(toneValues ?? presets.flat, 'Previous balance');
+    const to = tuningProfile(values, 'New balance');
+    for (const row of rows) {
+      if (!row.enabled) continue;
+      const delta = responseDb(to.filters, 0, row.frequency) - responseDb(from.filters, 0, row.frequency);
+      if (!Number.isFinite(delta)) continue;
+      row.gain = Math.round(Math.max(-24, Math.min(24, row.gain + delta)) * 10) / 10;
+    }
+    toneValues = values;
+    syncToneControls();
+    update();
+  } catch (error) { message(error.message, true); }
 }
 
 for (const button of document.querySelectorAll('[data-preset]')) {
   button.onclick = () => {
-    if (!$('#preamp').checkValidity()) { message('Enter a finite preamp value.', true); return; }
+    if (!$('#preamp').checkValidity()) { message('Enter a finite preamp value no higher than +10 dB.', true); return; }
     const preamp = Number($('#preamp').value);
-    try { previousDraft = captureDraft(); } catch { /* An invalid draft is never saved as an undo target. */ }
     const preset = presets[button.dataset.preset];
-    useProfile(tuningProfile(preset, preset.name, preamp), preset === presets.flat ? 'Flat bands · your preamp stays unchanged.' : bassCondition, preset);
-    $('#tone-panel').hidden = true;
-    $('#toggle-tone').setAttribute('aria-expanded', 'false');
-    renderEqState();
-    $('#undo-preset').disabled = !previousDraft;
+    changeDraft(() => useProfile(tuningProfile(preset, preset.name, preamp), preset === presets.flat ? 'Flat bands · your preamp stays unchanged.' : bassCondition, preset));
   };
 }
-$('#undo-preset').onclick = () => {
-  if (!previousDraft) return;
-  const previous = previousDraft;
-  previousDraft = null;
-  useProfile(previous.profile, previous.condition, previous.tone);
-  $('#undo-preset').disabled = true;
-};
+for (const [id, source, target] of [['undo-draft', undoDrafts, redoDrafts], ['redo-draft', redoDrafts, undoDrafts]]) {
+  $(`#${id}`).onclick = () => {
+    eqGraph?.cancel(); endDraftGesture();
+    if (!source.length) return;
+    target.push(captureDraftState());
+    restoreDraftState(source.pop());
+  };
+}
 for (const key of ['deep', 'punch', 'clarity']) {
-  $(`#tone-${key}`).oninput = event => {
-    if (!toneValues) return;
-    const values = {...toneValues, [key]: Number(event.target.value)};
+  const slider = $(`#tone-${key}`);
+  slider.addEventListener('pointerdown', beginDraftGesture);
+  slider.addEventListener('keydown', beginDraftGesture);
+  slider.addEventListener('change', endDraftGesture);
+  slider.addEventListener('pointerup', endDraftGesture);
+  slider.addEventListener('pointercancel', endDraftGesture);
+  slider.addEventListener('keyup', endDraftGesture);
+  slider.addEventListener('blur', endDraftGesture);
+  slider.oninput = event => {
+    beginDraftGesture();
+    const values = {...(toneValues ?? presets.flat), [key]: Number(event.target.value)};
+    if ($('#eq').dataset.mode === 'custom') {
+      applyTonePull(values);
+      return;
+    }
     try {
-      if (!$('#preamp').checkValidity()) throw Error('Enter a finite preamp value.');
+      if (!$('#preamp').checkValidity()) throw Error('Enter a finite preamp value no higher than +10 dB.');
       useProfile(tuningProfile(values, undefined, Number($('#preamp').value)), bassCondition, values);
     }
     catch (error) { message(error.message, true); }
   };
 }
-$('#toggle-tone').onclick = () => {
-  const show = $('#tone-panel').hidden;
-  if (show) closeBandEditor(false);
-  $('#tone-panel').hidden = !show;
-  $('#toggle-tone').setAttribute('aria-expanded', String(show));
-  renderEqState();
-};
-$('#auto-headroom').onclick = () => {
-  try { $('#preamp').value = headroom(draft()).recommended; update(); }
+$('#auto-headroom').onclick = () => { $('#headroom-dialog').showModal(); };
+$('#cancel-headroom').onclick = () => { if (!connectionBusy) $('#headroom-dialog').close(); };
+$('#confirm-headroom').onclick = () => {
+  try { const preamp = headroom(draft()).recommended; changeDraft(() => { $('#preamp').value = preamp; update(); }); $('#headroom-dialog').close(); }
   catch (error) { message(error.message, true); }
 };
 $('#save-draft').onclick = () => profileLibrary.openSave();
-$('#save-profile-from-editor').onclick = () => profileLibrary.openSave();
-$('#export-draft').onclick = async () => {
-  try {
-    const profile = draft();
-    const filename = `${profile.name.replace(/[^a-z0-9_-]+/gi, '-').slice(0, 80) || 'cmf-profile'}.txt`;
-    if (isAndroid && invoke) {
-      const saved = await invoke('export_profile_file', {name: filename, text: exportProfile(profile)});
-      message(saved ? 'Editor draft exported.' : 'Export cancelled.'); return;
-    }
-    const url = URL.createObjectURL(new Blob([exportProfile(profile)], {type:'text/plain;charset=utf-8'}));
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = filename;
-    document.body.append(link);
-    link.click();
-    link.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
-    message('Export requested. The file contains your editor draft.');
-  } catch (error) { message(error.message, true); }
-};
 
 function initializeDraft() {
   useProfile(startingProfile, 'Flat custom EQ · 0 dB preamp; no additional correction.', presets.flat);
@@ -839,20 +899,18 @@ $('#profile-file').onchange=async event=>{
     const profile=await invoke('import_autoeq',{text:await file.text(),name:file.name.replace(/\.txt$/i,'')});
     if(version!==importVersion)return;
     pending=profile;$('#import-name').textContent=profile.name;
-    $('#import-summary').textContent=`${profile.filters.length}/8 bands · ${profile.preamp} dB preamp · ${profile.disabled_filters.length} disabled rows skipped. Confirm to replace your draft.`;
+    $('#import-summary').textContent=`${profile.filters.length} bands · ${profile.preamp} dB preamp${profile.disabled_filters.length ? ` · ${profile.disabled_filters.length} disabled rows skipped` : ''}`;
     $('#import-preview').hidden=false;message('Profile validated. Review the import before replacing your draft.');
   }catch(error){if(version===importVersion)message(String(error.message??error),true);}
   finally{event.target.value='';}
 };
-$('#use-import').onclick=()=>{if(pending){useProfile(pending,pendingCondition);pending=null;$('#import-preview').hidden=true;showTab('eq', true);}};
+$('#use-import').onclick=()=>{if(pending){changeDraft(()=>useProfile(pending,pendingCondition));pending=null;$('#import-preview').hidden=true;showTab('eq', true);}};
 $('#cancel-import').onclick=()=>{++importVersion;pending=null;$('#import-preview').hidden=true;message('Import cancelled. Your draft is unchanged.');};
-$('#reference').onclick=async()=>{try{if(!invoke)throw Error('Load reference needs the desktop app. This preview opens with a Punch draft.');const profile=await invoke('reference_profile');++importVersion;pending=null;$('#import-preview').hidden=true;useProfile(profile);$('#condition').textContent='Reference tuning · ANC maximum.';showTab('eq', true);}catch(error){message(String(error.message??error),true);}};
+$('#reference').onclick=async()=>{try{if(!invoke)throw Error('Load reference needs the desktop app. This preview opens with a Punch draft.');const profile=await invoke('reference_profile');++importVersion;pending=null;$('#import-preview').hidden=true;changeDraft(()=>{useProfile(profile);$('#condition').textContent='Reference tuning · ANC maximum.';});showTab('eq', true);}catch(error){message(String(error.message??error),true);}};
 profileLibrary = createProfileLibrary({
   invoke, capture: captureDraft, message, onBusy: renderEqState,
   openDraft(profile, condition, tone) {
-    try { previousDraft = captureDraft(); } catch { previousDraft = null; }
-    useProfile(cloneProfile(profile), condition, tone);
-    $('#undo-preset').disabled = !previousDraft;
+    changeDraft(() => useProfile(cloneProfile(profile), condition, tone));
     showTab('eq', true);
   },
   savedDraft(entry) {
@@ -866,14 +924,15 @@ eqGraph = createEqGraph($('#response'), {
   state: () => ({ rows, selectedBand, profile: draft(), editable: $('#eq').dataset.mode === 'custom' }),
   select(index) { selectGraphBand(index); update(); },
   open: openBandEditor,
-  refresh: update,
+  refresh() { endDraftGesture(); update(); },
   begin(index) {
-    const original = {...rows[index]}, tone = toneValues, undo = previousDraft;
-    previousDraft = captureDraft(); $('#undo-preset').disabled = false;
+    endDraftGesture();
+    const previous = captureDraftState();
+    beginDraftGesture();
     return () => {
-      rows[index] = original; toneValues = tone; previousDraft = undo;
-      $('#undo-preset').disabled = !previousDraft;
-      selectGraphBand(index); syncToneControls(); update();
+      draftGesture = null;
+      restoreDraftState(previous);
+      selectGraphBand(index); update();
     };
   },
   edit(index, frequency, gain) {
