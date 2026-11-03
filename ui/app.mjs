@@ -31,7 +31,6 @@ if (connectedPreview) {
   };
 }
 let ancExpanded = false;
-let gainConsentKey = null, spatialConsentKey = null;
 let profileLibrary = null;
 let eqGraph = null;
 const deviceKey = () => connection.connected ? `${connection.device.address}|${connection.firmware}` : null;
@@ -54,7 +53,6 @@ let pendingCondition = 'Imported draft · match ANC to the profile’s measureme
 
 function renderConnection() {
   const connected = connection.connected;
-  if (!connected) { gainConsentKey = null; spatialConsentKey = null; }
   $('#device-name').textContent = connection.device?.name || 'CMF Headphone Pro';
   $('#device-name').title = connection.device?.name || 'CMF Headphone Pro';
   $('#connection-state').textContent = connectionBusy ? (connected ? 'Updating settings…' : 'Connecting…') : connected ? 'Connected' : 'Not connected';
@@ -108,7 +106,7 @@ function renderConnection() {
     button.title = 'Set spatial mode and check headphone readback.';
   }
   renderEqState();
-  $('.spatial-help').textContent = spatialConsentKey === deviceKey() && connected ? 'Select a mode to apply it.' : 'First change asks once; mode readback is checked.';
+  $('.spatial-help').textContent = connected ? 'Select a mode to apply it; readback is checked.' : 'Changes are checked on the headphones.';
   renderStoredEqPreview();
 }
 
@@ -565,23 +563,6 @@ function renderEqState() {
     $('#save-draft').disabled = true;
   }
   const canWrite = Boolean(invoke && connection.connected && !connectionBusy && connection.firmware && !connection.snapshot_error);
-  const currentGain = connection.eq?.preamp;
-  const gainReady = canWrite && connection.eq && !connection.gain_error;
-  $('#gain-down').disabled = !gainReady;
-  $('#gain-up').disabled = !gainReady;
-  $('#undo-gain').disabled = !gainReady || !connection.gain_undo;
-  $('#undo-gain').hidden = !connection.gain_undo;
-  $('#gain-value').value = Number.isFinite(currentGain) ? `${currentGain > 0 ? '+' : ''}${Number(currentGain.toFixed(1))} dB` : '— dB';
-  $('#gain-help').textContent = connection.gain_error || (!invoke ? 'Desktop app required. This preview does not change sound.'
-    : gainConsentKey === deviceKey() ? 'EQ kept. Boost may clip or have no audible effect.' : 'EQ bands stay unchanged · 1 dB steps. First use asks once.');
-  try {
-    const peak = headroom(connection.eq).outputPeak;
-    $('#gain-peak').textContent = `Estimated device peak ${peak > 0 ? '+' : ''}${peak.toFixed(1)} dB${peak > 0 ? ' · clipping possible' : ''}`;
-    $('#gain-peak').classList.toggle('invalid-draft', peak > 0);
-  } catch { $('#gain-peak').textContent = 'Connect to read the current gain.'; $('#gain-peak').classList.remove('invalid-draft'); }
-  const gainWarning = connection.gain_error || ($('#gain-peak').classList.contains('invalid-draft') ? $('#gain-peak').textContent : '');
-  $('#gain-warning').textContent = gainWarning;
-  $('#gain-warning').hidden = !gainWarning;
   $('#apply-eq').disabled = !canWrite || !valid || !connection.eq;
   $('#apply-eq').title = !invoke ? 'Open the desktop app to apply EQ.' : !connection.connected ? 'Connect your headphones first.' : !valid ? 'Check the preamp and band values.' : connection.snapshot_error || 'Review the selected device and EQ before applying.';
   $('#restore-eq').disabled = !canWrite || !connection.snapshot;
@@ -779,23 +760,10 @@ async function reviewEq(action, value = null) {
   try {
     const target = { address: connection.device.address, firmware: connection.firmware };
     let profile = action === 'restore' ? await invoke('snapshot_profile') : action === 'apply' ? await invoke('validate_profile', {profile: draft()}) : null;
-    const isGain = action === 'gain' || action === 'gainUndo';
-    const expectedEq = isGain && connection.eq ? cloneProfile(connection.eq) : null;
-    if (isGain) {
-      if (!expectedEq || (action === 'gain' && ![-1,1].includes(value))) throw Error('Read the headphone EQ before adjusting gain.');
-      profile = cloneProfile(expectedEq);
-      profile.preamp = action === 'gainUndo' ? connection.gain_undo?.preamp : profile.preamp + value;
-      if (!Number.isFinite(profile.preamp)) throw Error('No gain step is available to undo.');
-      profile.name = `${deviceSoundName()} · device gain`;
-    }
-    writeReview = {action, profile, value, expectedEq, key: deviceKey(), ...target};
+    writeReview = {action, profile, value, key: deviceKey(), ...target};
     $('#eq-confirm-title').textContent = action === 'inspect' ? 'Headphone EQ readback' : action === 'restore' ? 'Restore your original EQ' : 'Review your EQ';
-    if (isGain) $('#eq-confirm-title').textContent = 'Enable direct gain control';
-    if (action === 'spatial') $('#eq-confirm-title').textContent = 'Enable spatial control';
     $('#eq-confirm-target').textContent = `${connection.device.name} · ${target.address} · firmware ${target.firmware}`;
     $('#eq-confirm-summary').textContent = profile ? `${profile.name} · ${profile.filters.length} bands · ${profile.preamp} dB preamp.` : connection.eq_write_note || 'Stored filter values. Audible preset activation is not detected.';
-    if (action === 'spatial') $('#eq-confirm-summary').textContent = `${spatialNames[connection.spatial_mode] || 'Current mode'} → ${spatialNames[value]}`;
-    $('.confirm-table-wrap').hidden = action === 'spatial';
     $('#eq-confirm-bands').replaceChildren();
     if (profile) appendProfileRows(profile);
     else {
@@ -805,15 +773,7 @@ async function reviewEq(action, value = null) {
     $('#eq-confirm-backup').textContent = action === 'inspect' ? 'Readback shows stored values; it does not measure sound or prove that Custom mode is active.'
       : action === 'restore' ? 'Restores saved EQ values for this device and firmware. Preset selection, ANC, slider position and your draft are unchanged.'
       : connection.snapshot ? 'Your existing original EQ backup will be kept.' : 'The current headphone EQ will be read and saved before applying.';
-    if (isGain) $('#eq-confirm-backup').textContent = `Keeps all ${profile.filters.length} current EQ bands. Gain changes from ${expectedEq.preamp} to ${profile.preamp} dB. Undo step restores the previous gain; your original backup and editor draft are kept.`;
-    if (action === 'spatial') $('#eq-confirm-backup').textContent = 'Uses the B175 reference mode mapping and verifies mode readback. Audible Cinema/Concert behavior still needs owner confirmation. Your editor draft is kept.';
-    $('#eq-confirm-gain-warning').hidden = !isGain && action !== 'spatial';
-    $('#eq-confirm-gain-warning').textContent = isGain
-      ? 'Gain can clip, trigger limiting or have no audible benefit. The app adds no audio limiter. Lower playback volume first. After this confirmation, − / + apply directly until disconnect. Stored gain may persist; the app does not enforce a dB range.'
-      : action === 'spatial' ? 'After this confirmation, the spatial buttons apply directly until disconnect. The setting may persist. Select Off to disable spatial audio.' : '';
-    $('#custom-mode-label').textContent = isGain
-      ? 'Custom EQ is selected in Nothing X. Enable direct gain adjustments for this connection; I understand the clipping risk.'
-      : action === 'spatial' ? 'Enable spatial mode controls for this connection.' : 'Custom EQ is selected in Nothing X.';
+    $('#custom-mode-label').textContent = 'Custom EQ is selected in Nothing X.';
     $('.custom-mode-check').hidden = action === 'inspect';
     $('#custom-mode-confirmed').required = action !== 'inspect';
     $('#custom-mode-confirmed').checked = false;
@@ -827,20 +787,10 @@ async function reviewEq(action, value = null) {
 }
 
 $('#apply-eq').onclick = () => reviewEq('apply');
-function changeGain(delta) {
-  if (!invoke || connectionBusy || !connection.eq) return;
-  if (gainConsentKey !== deviceKey()) { reviewEq(delta === 'undo' ? 'gainUndo' : 'gain', delta); return; }
-  commitDeviceChange({action: delta === 'undo' ? 'gainUndo' : 'gain', value: delta, expectedEq: cloneProfile(connection.eq),
-    address:connection.device.address,firmware:connection.firmware,key:deviceKey()});
-}
-$('#gain-down').onclick = () => changeGain(-1);
-$('#gain-up').onclick = () => changeGain(1);
-$('#undo-gain').onclick = () => changeGain('undo');
 for (const button of document.querySelectorAll('[data-spatial]')) button.onclick = () => {
   const mode = Number(button.dataset.spatial);
   if (!invoke || connectionBusy || mode === connection.spatial_mode) return;
-  if (spatialConsentKey !== deviceKey()) { reviewEq('spatial', mode); return; }
-  commitDeviceChange({action:'spatial',value:mode,address:connection.device.address,firmware:connection.firmware,key:deviceKey()});
+  commitDeviceChange({action:'spatial',value:mode,address:connection.device.address,firmware:connection.firmware});
 };
 $('#restore-eq').onclick = () => reviewEq('restore');
 $('#device-eq-status').onclick = () => reviewEq('inspect');
@@ -859,16 +809,12 @@ async function commitDeviceChange(review, fromDialog = false) {
   try {
     const args = { address: review.address, firmware: review.firmware, customModeConfirmed: true };
     if (review.action === 'apply') args.profile = review.profile;
-    if (review.action === 'gain' || review.action === 'gainUndo') args.expectedEq = review.expectedEq;
-    if (review.action === 'gain') { args.deltaDb = review.value; args.gainTrialConfirmed = true; }
     if (review.action === 'spatial') { args.mode = review.value; args.confirmed = true; }
-    const command = {gain:'set_bluetooth_gain',gainUndo:'undo_bluetooth_gain',spatial:'set_spatial',apply:'apply_eq',restore:'restore_eq'}[review.action];
+    const command = {spatial:'set_spatial',apply:'apply_eq',restore:'restore_eq'}[review.action];
     connection = await invoke(command, args);
-    if (review.action === 'gain' || review.action === 'gainUndo') gainConsentKey = review.key;
-    if (review.action === 'spatial') spatialConsentKey = review.key;
     if (fromDialog) $('#eq-confirm').close();
     message(review.action === 'spatial' ? `${spatialNames[connection.spatial_mode]} matches mode readback.`
-      : `${review.action === 'gain' || review.action === 'gainUndo' ? 'Gain updated; EQ bands kept.' : 'EQ values verified.'}${connection.eq_write_note ? ` ${connection.eq_write_note}` : ''} Your editor draft is kept.`);
+      : `EQ values verified.${connection.eq_write_note ? ` ${connection.eq_write_note}` : ''} Your editor draft is kept.`);
   } catch (error) {
     try { connection = await invoke('headphone_status'); }
     catch { connection = {connected:false}; }

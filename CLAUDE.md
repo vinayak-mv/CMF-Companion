@@ -108,7 +108,11 @@ This is the part of the codebase that matters most; preserve it when touching th
   or firmware changed since the review. Callers pass the address and firmware the user saw.
 - `custom_mode_confirmed` must be true for EQ writes: there is no verified command to switch the
   headphones into Custom EQ mode, which is why the UI requires selecting it in Nothing X first.
-  `gain_trial_confirmed` (clipping risk) and spatial `confirmed` follow the same pattern.
+  `gain_trial_confirmed` follows the same pattern. Spatial writes always receive `confirmed: true`
+  from the UI with no consent dialog; the write is still guarded by the device-name restriction,
+  target re-read and mode readback. The home-page output-gain card was removed from the UI (the
+  EQ preamp is the only gain control), so `set_bluetooth_gain` / `undo_bluetooth_gain` have no UI
+  callers.
 - Gain steps are ±1 dB only, are checked to be exactly representable in f32 at the current
   preamp, and are staged to `last-gain-change.json` before the write so undo can detect
   third-party edits.
