@@ -128,6 +128,10 @@ while connected, visible, idle, and dialog-free — which doubles as the link li
 (a transport failure drops the session and the UI offers reconnect). `refresh_headphones`
 still exists as a Tauri command but has no UI caller. Battery parsing is tolerant of a
 stale record-count byte and unknown single-record IDs (see `decode_battery`/`apply_battery`).
+The UI copies `ConnectionStatus.eq` into the editor draft on the first connection of a session
+(`adoptDeviceEq` in `ui/app.mjs`), so the editor opens on the headphone's stored EQ; later
+reconnects leave the draft untouched. The device supplies no profile name, so the UI labels the
+adopted draft "Headphone EQ" (`decode_eq` itself names the readback "Headphone readback").
 
 ### UI
 

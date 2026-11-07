@@ -18,6 +18,7 @@ let toneValues = {...presets.flat}, writeReview = null, notificationTimer;
 const undoDrafts = [], redoDrafts = [];
 let selectedBand = 0;
 let connection = { connected: false }, connectionBusy = false, pollTimer;
+let adoptedDeviceEq = false;
 if (connectedPreview) {
   connection = {
     connected: true,
@@ -192,7 +193,10 @@ async function scanDevices() {
     }
     message(`${device.name} found. Connecting and reading settings…`);
     connection = await invoke('connect_headphones', { address: device.address });
-    connectionMessage(`Connected to ${connection.device.name}. Firmware ${connection.firmware}. Your editor draft is unchanged.`);
+    const adopted = adoptDeviceEq();
+    connectionMessage(adopted
+      ? `Connected to ${connection.device.name}. Firmware ${connection.firmware}. EQ read from the headphones is in the editor.`
+      : `Connected to ${connection.device.name}. Firmware ${connection.firmware}. Your editor draft is unchanged.`);
   } catch (error) {
     try { connection = await invoke('headphone_status'); }
     catch { connection = { connected: false }; }
@@ -463,6 +467,18 @@ function useProfile(profile, condition = 'Imported draft · match ANC to the pro
   $('#condition').textContent=condition;
   syncToneControls();
   setEqMode(tone ? 'presets' : 'custom');
+}
+
+// The first connection of a session opens the device's stored EQ in the editor.
+// Later reconnects keep the user's draft, which may already hold unsaved changes.
+function adoptDeviceEq() {
+  if (adoptedDeviceEq || !connection.connected || !connection.eq) return false;
+  adoptedDeviceEq = true;
+  const profile = cloneProfile(connection.eq);
+  // The device carries no profile name; keep the editor title short enough to fit.
+  profile.name = 'Headphone EQ';
+  changeDraft(() => useProfile(profile, 'Device EQ · read from the headphones when the app started.', null));
+  return true;
 }
 
 $('#preamp').addEventListener('focus', beginDraftGesture);
@@ -845,6 +861,7 @@ if (invoke) {
   (async () => {
     try {
       connection = await invoke('headphone_status');
+      if (connection.connected) adoptDeviceEq();
       renderConnection();
       if (!connection.connected) await scanDevices();
       schedulePoll();
