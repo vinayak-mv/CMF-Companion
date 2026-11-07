@@ -95,26 +95,33 @@
       </div>
     </section>
     <section id="profiles" class="view profiles-view" role="tabpanel" aria-labelledby="tab-profiles" tabindex="0" hidden>
-      <div class="view-heading"><h1>Profiles</h1></div>
+      <div class="view-heading"><h1>Profiles</h1><div class="heading-side"><span class="eyebrow">YOUR LIBRARY</span></div></div>
       <section class="saved-library" aria-label="Saved profiles">
-        <div class="library-toolbar"><h2>Saved <span id="library-count" hidden>0</span></h2><button id="undo-remove-profile" hidden>Undo</button><button id="refresh-profiles" class="icon-button" aria-label="Refresh saved profiles" title="Refresh saved profiles"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M15.5 7a6 6 0 1 0 .5 5M15.5 3v4h-4"/></svg></button></div>
+        <div class="library-toolbar"><h2 class="section-label">Saved <span id="library-count" hidden>0</span></h2><button id="undo-remove-profile" hidden>Undo</button><button id="refresh-profiles" class="icon-button" aria-label="Refresh saved profiles" title="Refresh saved profiles"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M15.5 7a6 6 0 1 0 .5 5M15.5 3v4h-4"/></svg></button></div>
         <div class="library-actions">
           <div class="profile-search-field"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5"/><path d="m12 12 4 4"/></svg><label for="profile-search" class="visually-hidden">Search saved profiles</label><input id="profile-search" type="search" maxlength="80" placeholder="Search profiles"></div>
           <button id="choose-profile" class="profile-import-button" title="Import an AutoEQ or Equalizer APO .txt file"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 3v9m-4-4 4 4 4-4M4 13v3h12v-3"/></svg><span>Import</span></button>
           <input id="profile-file" type="file" accept=".txt,text/plain" hidden>
         </div>
-        <div id="library-results" class="library-results is-empty"><p id="library-status" class="small muted" role="status">Loading…</p><div id="saved-profile-list"></div></div>
+        <div id="library-results" class="library-results is-empty">
+          <div id="library-empty" class="library-empty" hidden>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="4" width="14" height="17" rx="3"/><path d="M9 2h6M9 11h6m-6 4h4"/></svg>
+            <strong>No saved profiles yet</strong>
+            <p class="small muted">Save a draft from the Equalizer tab and it will appear here.</p>
+          </div>
+          <p id="library-status" class="small muted" role="status">Loading…</p>
+          <div id="saved-profile-list"></div>
+        </div>
         <div class="library-pager" hidden><button id="profiles-previous" class="icon-button" aria-label="Previous profiles"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="m12 5-5 5 5 5"/></svg></button><span id="profiles-page" class="small muted"></span><button id="profiles-next" class="icon-button" aria-label="Next profiles"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="m8 5 5 5-5 5"/></svg></button></div>
       </section>
       <div id="import-preview" class="import-preview" hidden><span id="preview-label" class="eyebrow">IMPORT PREVIEW</span><h2 id="import-name"></h2><p id="import-summary"></p><div class="preview-actions"><button id="cancel-import">Cancel</button><button id="use-import" class="primary">Use in editor</button></div></div>
       <section class="reference-library" aria-label="Reference profiles">
-        <div class="card-heading"><span>Reference</span></div>
-        <button id="reference" class="profile-item" title="7 bands · −6.1 dB preamp · ANC maximum"><strong>Harman 2018 target</strong><svg viewBox="0 0 20 20" aria-hidden="true"><path d="m8 5 5 5-5 5"/></svg></button>
-      </section>
-      <section class="view-bottom profile-device-tools" aria-label="Device EQ tools">
-        <div class="card-heading"><span>Device EQ</span></div>
-        <p id="snapshot-status" class="small invalid-draft" role="status" hidden></p>
-        <div class="recovery-actions"><button id="use-device-eq" aria-label="Preview the headphone EQ" title="Preview the headphone EQ" disabled>Review</button><button id="restore-eq" aria-label="Restore original headphone EQ" title="Restore original headphone EQ" disabled>Restore</button></div>
+        <h2 class="section-label">Reference</h2>
+        <button id="reference" class="profile-item" title="7 bands · −6.1 dB preamp · ANC maximum">
+          <span class="profile-item-icon"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="6.5"/><circle cx="10" cy="10" r="2.5"/><path d="M10 1.5v3m0 11v3M1.5 10h3m11 0h3"/></svg></span>
+          <span class="profile-item-text"><strong>Harman 2018 target</strong><span class="small muted">7 bands · −6.1 dB preamp · ANC maximum</span></span>
+          <svg class="profile-item-chevron" viewBox="0 0 20 20" aria-hidden="true"><path d="m8 5 5 5-5 5"/></svg>
+        </button>
       </section>
     </section>
     <section id="settings" class="view settings-view" role="tabpanel" aria-labelledby="tab-settings" tabindex="0" hidden>
@@ -138,7 +145,6 @@
       <p id="eq-confirm-target" class="small"></p>
       <p id="eq-confirm-summary" class="small"></p>
       <div class="confirm-table-wrap"><table class="confirm-table"><thead><tr><th>Band</th><th>Type</th><th>Hz</th><th>dB</th><th>Q</th></tr></thead><tbody id="eq-confirm-bands"></tbody></table></div>
-      <p id="eq-confirm-backup" class="small muted"></p>
       <p class="small muted">Choose Custom EQ in Nothing X first. For bass presets: ANC High, bass slider minimum, spatial audio off. Then close Nothing X if it holds the connection.</p>
       <label class="custom-mode-check"><input id="custom-mode-confirmed" type="checkbox" required><span id="custom-mode-label">Custom EQ is selected in Nothing X.</span></label>
       <p id="eq-confirm-result" class="small" role="status" aria-live="polite"></p>

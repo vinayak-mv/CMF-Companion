@@ -1,7 +1,7 @@
 //! Windows Bluetooth Classic control connection with verified setting writes.
 use crate::autoeq::Profile;
 use crate::protocol::{self, Decoder};
-use crate::snapshots::{GainUndoInfo, SnapshotInfo, SnapshotStore};
+use crate::gain_record::{GainRecordStore, GainUndoInfo};
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
@@ -32,8 +32,6 @@ pub struct ConnectionStatus {
     pub head_tracking: Option<bool>,
     pub eq: Option<Profile>,
     pub warnings: Vec<String>,
-    pub snapshot: Option<SnapshotInfo>,
-    pub snapshot_error: Option<String>,
     pub requested_eq: Option<Profile>,
     /// Empty until a write is attempted; then pending, verified, different, or uncertain.
     pub eq_write_state: String,
@@ -46,13 +44,13 @@ pub struct ConnectionStatus {
 pub struct Controller {
     session: Option<Session>,
     status: ConnectionStatus,
-    snapshots: SnapshotStore,
+    gain_records: GainRecordStore,
 }
 
 impl Controller {
-    pub fn with_snapshot_directory(root: PathBuf) -> Self {
+    pub fn with_data_directory(root: PathBuf) -> Self {
         Self {
-            snapshots: SnapshotStore::new(root),
+            gain_records: GainRecordStore::new(root),
             ..Self::default()
         }
     }
@@ -88,7 +86,7 @@ impl Controller {
         status.firmware = Some(read_text(&session.request(0xc042, &[], 8)?)?);
         self.status = status;
         self.session = Some(session);
-        self.update_snapshot_status();
+        self.refresh_gain_undo();
         Ok(self.status())
     }
 
@@ -112,7 +110,7 @@ impl Controller {
             }
         }
         self.update_eq_verification();
-        self.update_snapshot_status();
+        self.refresh_gain_undo();
         Ok(self.status())
     }
 
@@ -166,17 +164,11 @@ impl Controller {
         Ok(status)
     }
 
-    fn update_snapshot_status(&mut self) {
-        self.status.snapshot = None;
-        self.status.snapshot_error = None;
+    fn refresh_gain_undo(&mut self) {
         self.status.gain_undo = None;
         self.status.gain_error = None;
         if let (Some(device), Some(firmware)) = (&self.status.device, &self.status.firmware) {
-            match self.snapshots.load(&device.address, firmware) {
-                Ok(snapshot) => self.status.snapshot = snapshot.map(|snapshot| snapshot.info()),
-                Err(error) => self.status.snapshot_error = Some(error),
-            }
-            match self.snapshots.load_gain(&device.address, firmware) {
+            match self.gain_records.load(&device.address, firmware) {
                 Ok(Some(change)) => {
                     if let Some(actual) = &self.status.eq {
                         if matches!((protocol::encode_eq(actual), protocol::encode_eq(&change.after)), (Ok(actual), Ok(after)) if actual == after) {
@@ -220,7 +212,7 @@ impl Controller {
         let current_firmware = read_text(&session.request(0xc042, &[], 8)?)?;
         if current_firmware != firmware {
             self.status.firmware = Some(current_firmware);
-            self.update_snapshot_status();
+            self.refresh_gain_undo();
             return Err("Firmware changed. Read settings and review the target again.".into());
         }
         Ok(())
@@ -257,9 +249,7 @@ impl Controller {
             .and_then(|bytes| protocol::decode_eq(&bytes))?;
         self.status.eq = Some(baseline.clone());
         self.update_eq_verification();
-        let backup = self.snapshots.ensure(address, firmware, &baseline);
-        self.update_snapshot_status();
-        backup?; // A durable, validated recovery file is required before the write.
+        self.refresh_gain_undo();
         Ok(baseline)
     }
 
@@ -291,13 +281,13 @@ impl Controller {
         if ((profile.preamp - baseline.preamp) - f32::from(delta_db)).abs() > 0.001 {
             return Err("A one-dB step cannot be represented at this preamp. Enter the preamp directly in Equalizer.".into());
         }
-        self.snapshots.stage_gain(address, firmware, &baseline, &profile)?;
+        self.gain_records.stage(address, firmware, &baseline, &profile)?;
         self.write_eq(profile)
     }
 
     pub fn undo_bluetooth_gain(&mut self, expected_eq: Profile, address: &str, firmware: &str, custom_mode_confirmed: bool) -> Result<ConnectionStatus, String> {
         let baseline = self.prepare_eq_write(address, firmware, custom_mode_confirmed)?;
-        let change = self.snapshots.load_gain(address, firmware)?.ok_or("No gain change is available to undo.")?;
+        let change = self.gain_records.load(address, firmware)?.ok_or("No gain change is available to undo.")?;
         let actual = protocol::encode_eq(&baseline)?;
         if actual != protocol::encode_eq(&expected_eq)? || actual != protocol::encode_eq(&change.after)? {
             return Err("Headphone EQ changed. Undo will not replace your newer settings.".into());
@@ -335,37 +325,6 @@ impl Controller {
         Ok(self.status())
     }
 
-    pub fn snapshot_profile(&self) -> Result<Profile, String> {
-        let device = self
-            .status
-            .device
-            .as_ref()
-            .ok_or("Connect your headphones first.")?;
-        let firmware = self
-            .status
-            .firmware
-            .as_deref()
-            .ok_or("Read the headphone firmware first.")?;
-        self.snapshots
-            .load(&device.address, firmware)?
-            .map(|snapshot| snapshot.eq)
-            .ok_or("No backup exists for this device and firmware.".into())
-    }
-
-    pub fn restore_eq(
-        &mut self,
-        address: &str,
-        firmware: &str,
-        custom_mode_confirmed: bool,
-    ) -> Result<ConnectionStatus, String> {
-        if !custom_mode_confirmed {
-            return Err("Select Custom EQ in Nothing X and confirm it before restoring.".into());
-        }
-        self.confirm_write_target(address, firmware)?;
-        let profile = self.snapshot_profile()?;
-        self.write_eq(profile)
-    }
-
     fn write_eq(&mut self, profile: Profile) -> Result<ConnectionStatus, String> {
         let payload = protocol::encode_eq(&profile)?;
         self.status.requested_eq = Some(profile);
@@ -382,7 +341,7 @@ impl Controller {
         let read_error = readback.as_ref().err().cloned();
         self.status.eq = readback.ok();
         self.update_eq_verification();
-        self.update_snapshot_status();
+        self.refresh_gain_undo();
         if let Err(error) = acknowledgement {
             self.status.eq_write_note = Some(format!("Write acknowledgement unavailable: {error}"));
         }

@@ -1,7 +1,32 @@
 // Local named drafts. Every Bluetooth write remains in the main editor flow.
-import { tuningProfile, exportProfile } from './tuning.mjs';
+import { presets, tuningProfile, exportProfile } from './tuning.mjs';
+import { responseDb } from './response.mjs';
 
 const isAndroid = /Android/i.test(navigator.userAgent);
+const svgNamespace = 'http://www.w3.org/2000/svg';
+// The browser preview has no Tauri commands, so it seeds sample rows to exercise the layout.
+const previewLibrary = !window.__TAURI__?.core?.invoke && new URLSearchParams(location.search).get('preview') === 'connected';
+
+function formatDb(value) {
+  const rounded = Math.round(value * 10) / 10;
+  return `${rounded > 0 ? '+' : ''}${rounded}`;
+}
+
+// A calculated response at 41 log-spaced points, drawn into a 60 × 26 thumbnail.
+function sparkline(profile) {
+  const values = Array.from({ length: 41 }, (_, i) => responseDb(profile.filters, profile.preamp, 20 * 1000 ** (i / 40)));
+  if (!values.every(Number.isFinite)) return null;
+  const scale = Math.max(9, ...values.map(Math.abs));
+  const point = (value, i) => `${i ? 'L' : 'M'}${(1 + i * 58 / 40).toFixed(1)},${(13 - value / scale * 11).toFixed(1)}`;
+  const line = values.map(point).join(' ');
+  const svg = document.createElementNS(svgNamespace, 'svg');
+  svg.setAttribute('viewBox', '0 0 60 26'); svg.setAttribute('aria-hidden', 'true'); svg.classList.add('profile-spark');
+  for (const [name, d] of [['profile-spark-area', `${line} L59,25 L1,25 Z`], ['profile-spark-line', line]]) {
+    const path = document.createElementNS(svgNamespace, 'path');
+    path.setAttribute('class', name); path.setAttribute('d', d); svg.append(path);
+  }
+  return svg;
+}
 
 function savedTone(entry) {
   if (!entry.tone) return null;
@@ -15,6 +40,20 @@ function savedTone(entry) {
   return null;
 }
 
+function previewProfiles() {
+  const now = Math.floor(Date.now() / 1000);
+  return [
+    { id: 'preview-flat', revision: 1, updated_at: now - 86400 * 2, condition: 'Custom EQ · ANC High · spatial off',
+      profile: tuningProfile(presets.flat, 'Flat') },
+    { id: 'preview-punch', revision: 2, updated_at: now - 86400 * 9, condition: 'Custom EQ · ANC High · spatial off',
+      profile: tuningProfile(presets.punch, 'Punch', -1.5) },
+    { id: 'preview-deep', revision: 3, updated_at: now - 86400 * 24, condition: 'ANC High · bass slider minimum',
+      profile: tuningProfile(presets.deep, 'Deep bass', -3) },
+    { id: 'preview-vocal', revision: 4, updated_at: now - 86400 * 40, condition: 'Reference target · ANC maximum',
+      profile: tuningProfile({ deep: 45, punch: 20, clarity: 65 }, 'Vocal clarity', -2) },
+  ];
+}
+
 function profileIcon(path) {
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
   svg.setAttribute('viewBox', '0 0 20 20'); svg.setAttribute('aria-hidden', 'true');
@@ -25,9 +64,9 @@ function profileIcon(path) {
 
 export function createProfileLibrary({ invoke, capture, openDraft, savedDraft, message, onBusy }) {
   const $ = selector => document.querySelector(selector);
-  let profiles = [], warnings = [], loadError = '', loading = false, busy = false;
+  let profiles = previewLibrary ? previewProfiles() : [], warnings = [], loadError = '', loading = false, busy = false;
   let page = 0, generation = 0, dialogState = null, removed = null;
-  const pageSize = 2;
+  const pageSize = 4;
   const identity = value => value.trim().toLowerCase();
   const matchingName = () => profiles.find(entry => identity(entry.profile.name) === identity($('#saved-profile-name').value));
 
@@ -39,6 +78,8 @@ export function createProfileLibrary({ invoke, capture, openDraft, savedDraft, m
     $('#library-count').textContent = String(profiles.length);
     $('#library-count').hidden = profiles.length === 0;
     $('#library-results').classList.toggle('is-empty', matches.length === 0);
+    const emptyLibrary = Boolean(invoke) && !loading && !loadError && !warnings.length && profiles.length === 0;
+    $('#library-empty').hidden = !emptyLibrary;
     $('#refresh-profiles').disabled = !invoke || loading || busy;
     $('#undo-remove-profile').hidden = !removed;
     $('#undo-remove-profile').disabled = busy || loading;
@@ -49,18 +90,28 @@ export function createProfileLibrary({ invoke, capture, openDraft, savedDraft, m
     const status = $('#library-status');
     status.textContent = !invoke ? 'Library unavailable' : loading ? 'Loading…'
       : loadError || (warnings.length ? `${warnings.length} unreadable ${warnings.length === 1 ? 'profile' : 'profiles'}`
-        : !profiles.length ? 'No saved profiles' : !matches.length ? 'No matching profiles' : '');
+        : !profiles.length ? '' : !matches.length ? 'No matching profiles' : '');
     status.classList.toggle('invalid-draft', Boolean(loadError || warnings.length));
     status.title = !invoke ? 'Open the desktop app to access saved profiles.' : loadError || warnings.join('\n');
-    status.hidden = Boolean(profiles.length && matches.length && !loading && !loadError && !warnings.length);
+    status.hidden = emptyLibrary || Boolean(profiles.length && matches.length && !loading && !loadError && !warnings.length);
     $('#saved-profile-list').replaceChildren();
     for (const entry of matches.slice(page * pageSize, (page + 1) * pageSize)) {
       const card = document.createElement('div'); card.className = 'saved-profile-card';
       const open = document.createElement('button'); open.className = 'saved-profile-open'; open.disabled = busy;
       open.setAttribute('aria-label', `Open ${entry.profile.name} in editor`);
+      const text = document.createElement('span'); text.className = 'saved-profile-text';
       const name = document.createElement('strong'); name.textContent = entry.profile.name;
-      open.title = `${entry.profile.name}\n${entry.profile.filters.length} bands · ${entry.profile.preamp > 0 ? '+' : ''}${entry.profile.preamp} dB preamp${entry.condition ? `\n${entry.condition}` : ''}\nSaved ${new Date(entry.updated_at * 1000).toLocaleString()}`;
-      open.append(name, profileIcon('m8 5 5 5-5 5'));
+      const meta = document.createElement('span'); meta.className = 'saved-profile-meta';
+      meta.textContent = `${entry.profile.filters.length} bands · ${formatDb(entry.profile.preamp)} dB preamp · ${new Date(entry.updated_at * 1000).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}`;
+      text.append(name, meta);
+      if (entry.condition) {
+        const note = document.createElement('span'); note.className = 'saved-profile-note'; note.textContent = entry.condition;
+        text.append(note);
+      }
+      open.title = `${entry.profile.name}\n${entry.profile.filters.length} bands · ${formatDb(entry.profile.preamp)} dB preamp${entry.condition ? `\n${entry.condition}` : ''}\nSaved ${new Date(entry.updated_at * 1000).toLocaleString()}\nCalculated response thumbnail, not a measurement.`;
+      open.append(text);
+      const curve = sparkline(entry.profile);
+      if (curve) open.append(curve);
       open.onclick = () => { openDraft(entry.profile, entry.condition, savedTone(entry)); message(`“${entry.profile.name}” opened in the editor. Apply to listen.`); };
       const manage = document.createElement('button'); manage.className = 'manage-profile'; manage.disabled = busy;
       manage.append(profileIcon('M5 10h.01M10 10h.01M15 10h.01'));

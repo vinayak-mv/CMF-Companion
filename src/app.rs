@@ -206,37 +206,6 @@ async fn set_spatial(mode: u8, address: String, firmware: String, confirmed: boo
 }
 
 #[tauri::command]
-async fn restore_eq(
-    address: String,
-    firmware: String,
-    custom_mode_confirmed: bool,
-    state: tauri::State<'_, BluetoothState>,
-) -> Result<ConnectionStatus, String> {
-    let controller = state.inner().0.clone();
-    tauri::async_runtime::spawn_blocking(move || {
-        controller
-            .lock()
-            .map_err(|_| "Bluetooth state unavailable.")?
-            .restore_eq(&address, &firmware, custom_mode_confirmed)
-    })
-    .await
-    .map_err(|error| error.to_string())?
-}
-
-#[tauri::command]
-async fn snapshot_profile(state: tauri::State<'_, BluetoothState>) -> Result<Profile, String> {
-    let controller = state.inner().0.clone();
-    tauri::async_runtime::spawn_blocking(move || {
-        controller
-            .lock()
-            .map_err(|_| "Bluetooth state unavailable.")?
-            .snapshot_profile()
-    })
-    .await
-    .map_err(|error| error.to_string())?
-}
-
-#[tauri::command]
 fn import_autoeq(text: String, name: String) -> Result<Profile, String> {
     if text.len() > 256 * 1024 {
         return Err("Profile exceeds the 256 KB import limit.".into());
@@ -265,10 +234,10 @@ pub fn run() {
     builder
         .setup(|app| {
             let data = app.path().app_data_dir()?;
-            let root = data.join("eq-backups");
+            let root = data.join("gain-records");
             app.manage(LibraryState(Arc::new(Mutex::new(ProfileLibrary::new(data.join("profiles"))))));
             app.manage(BluetoothState(Arc::new(Mutex::new(
-                Controller::with_snapshot_directory(root),
+                Controller::with_data_directory(root),
             ))));
             Ok(())
         })
@@ -292,9 +261,7 @@ pub fn run() {
             apply_eq,
             set_bluetooth_gain,
             undo_bluetooth_gain,
-            set_spatial,
-            restore_eq,
-            snapshot_profile
+            set_spatial
         ])
         .run(tauri::generate_context!())
         .expect("Could not start CMF EQ");

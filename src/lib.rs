@@ -3,7 +3,7 @@ pub mod protocol;
 #[cfg(feature = "app")]
 pub mod bluetooth;
 #[cfg(feature = "app")]
-pub mod snapshots;
+pub mod gain_record;
 #[cfg(feature = "app")]
 pub mod profile_library;
 #[cfg(feature = "app")]

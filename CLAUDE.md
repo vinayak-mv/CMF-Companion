@@ -71,7 +71,7 @@ plugin's package, update `prepare_android.py` in the same change.
   which is why the protocol stays testable offline.
 - `bluetooth.rs` — the `Controller`: session state, request/response sequencing, all setting
   reads and writes, and `ConnectionStatus` (the single struct the UI renders).
-- `snapshots.rs` — immutable per-device/per-firmware EQ backups and the gain-undo record.
+- `gain_record.rs` — the staged per-device/per-firmware record of the last verified one-dB gain change.
 - `profile_library.rs` — named local profiles, validated and lock-protected.
 - `app.rs` — Tauri commands. Thin by design: each one clones the `Arc<Mutex<…>>` state handle and
   delegates to `Controller`/`ProfileLibrary` inside `spawn_blocking`, because all Bluetooth I/O
@@ -96,14 +96,13 @@ device behavior belongs in `bluetooth.rs`/`protocol.rs`, not in the Kotlin plugi
 
 This is the part of the codebase that matters most; preserve it when touching the write path.
 
-- Before an EQ write, `prepare_eq_write` reads the device's current EQ, stores it as a durable
-  snapshot, and aborts if that snapshot cannot be created or verified. `SnapshotStore::ensure`
-  uses `create_new` and never truncates an existing backup, so a corrupt file blocks writes
-  instead of being silently overwritten.
+- `prepare_eq_write` reads the device's current EQ immediately before a write and makes it the
+  reviewed baseline. There is no automatic EQ backup: recovery relies on the readback state and
+  the user's own saved profiles.
 - Writes are never automatically retried. A missing acknowledgement does not imply failure, so
   every write is followed by a readback and `ConnectionStatus.eq_write_state` resolves to
-  `verified`, `different`, or uncertain. The latter two return errors telling the user to review
-  or restore, never to resend.
+  `verified`, `different`, or uncertain. The latter two return errors telling the user to review,
+  never to resend.
 - `confirm_write_target` re-reads firmware immediately before writing and rejects if the device
   or firmware changed since the review. Callers pass the address and firmware the user saw.
 - `custom_mode_confirmed` must be true for EQ writes: there is no verified command to switch the
@@ -145,9 +144,8 @@ Controls / Equalizer / Profiles tabs.
 ### Storage
 
 Under Tauri's `app_data_dir`: `profiles/` (one JSON per saved profile, plus a `.library.lock`
-handle) and `eq-backups/<ADDRESS>/<hex-encoded-firmware>/original-eq.json` alongside
-`last-gain-change.json`. Firmware text is hex-encoded into the path so device-supplied strings
-can never contribute path components.
+handle) and `gain-records/<ADDRESS>/<hex-encoded-firmware>/last-gain-change.json`. Firmware text
+is hex-encoded into the path so device-supplied strings can never contribute path components.
 
 ### Android specifics
 
