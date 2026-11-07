@@ -1,0 +1,155 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    name: Verify version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Tag matches app version
+        run: |
+          version="$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -n1)"
+          tauri_version="$(jq -r '.version' tauri.conf.json)"
+          if [ "v$version" != "$GITHUB_REF_NAME" ] || [ "v$tauri_version" != "$GITHUB_REF_NAME" ]; then
+            echo "Tag $GITHUB_REF_NAME does not match Cargo.toml ($version) or tauri.conf.json ($tauri_version)." >&2
+            exit 1
+          fi
+
+  windows:
+    name: Windows x64
+    needs: verify
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Build desktop app
+        run: cargo build --release --features desktop --locked
+      - name: Stage release asset
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          Copy-Item target/release/cmf-eq.exe dist/cmf-eq-windows-x64.exe
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: dist/cmf-eq-windows-x64.exe
+          if-no-files-found: error
+
+  android:
+    name: Android ARM64
+    needs: verify
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      CARGO_INCREMENTAL: 0
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+      - uses: actions/cache/restore@v4
+        id: android-cache
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+            target/aarch64-linux-android
+            target/debug
+          key: android-arm64-v1-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: android-arm64-v1-${{ runner.os }}-
+      - uses: actions/cache@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: cmf-android-debug-signing-v1
+      - name: Install Android SDK and Tauri CLI
+        run: |
+          set -o pipefail
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platform-tools" "platforms;android-36" "build-tools;36.0.0" "ndk;28.2.13676358" 2>&1 | tee android-sdk.log
+          echo "NDK_HOME=$ANDROID_HOME/ndk/28.2.13676358" >> "$GITHUB_ENV"
+          npm ci --ignore-scripts --no-audit --no-fund
+      - name: Generate Android project
+        run: |
+          set -o pipefail
+          npx --no-install tauri icon ui/brand-mark.svg --output icons/android
+          npx --no-install tauri android init --ci --skip-targets-install 2>&1 | tee android-init.log
+          python tools/prepare_android.py 2>&1 | tee -a android-init.log
+          # Restored Rust build outputs must regenerate Kotlin files in this fresh project.
+          if [ -d "$HOME/.cargo/registry/src" ]; then
+            find "$HOME/.cargo/registry/src" -name build.rs \( -path '*/wry-*/*' -o -path '*/tao-*/*' -o -path '*/tauri-*/*' \) -exec touch {} +
+          fi
+      - name: Build installable ARM64 APK
+        run: |
+          set -o pipefail
+          npx --no-install tauri android build --debug --apk --target aarch64 --features app --ci 2>&1 | tee android-build.log
+      - name: Stage release asset
+        run: |
+          mkdir -p dist
+          apk="$(find gen/android/app/build/outputs/apk -name '*.apk' -print -quit)"
+          test -n "$apk"
+          cp "$apk" dist/cmf-eq-android-arm64.apk
+      - name: Report bounded build failure
+        if: failure()
+        run: python tools/report_android_failure.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android
+          path: dist/cmf-eq-android-arm64.apk
+          if-no-files-found: error
+      - uses: actions/cache/save@v4
+        if: always() && steps.android-cache.outputs.cache-hit != 'true' && steps.android-cache.outputs.cache-primary-key != ''
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+            target/aarch64-linux-android
+            target/debug
+          key: ${{ steps.android-cache.outputs.cache-primary-key }}
+
+  publish:
+    name: Publish release
+    needs: [windows, android]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: List release assets
+        run: ls -lh dist
+      - name: Create or update GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            # Re-run on an existing tag: replace the assets without duplicating the release.
+            gh release upload "$GITHUB_REF_NAME" dist/* --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" dist/* \
+              --title "CMF EQ $GITHUB_REF_NAME" \
+              --notes-file .github/release-notes.md \
+              --verify-tag
+          fi

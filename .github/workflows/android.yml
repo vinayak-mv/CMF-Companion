@@ -2,6 +2,8 @@ name: Build Android app
 
 on:
   push:
+    tags-ignore:
+      - "v*"
   workflow_dispatch:
 
 permissions:
