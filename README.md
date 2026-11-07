@@ -32,6 +32,18 @@ about to send.
 Every EQ change is a **draft** until you press **Apply**. Applying shows a review dialog
 with the exact bands, then writes them and reads them back to confirm.
 
+## Screenshots
+
+<p align="center">
+  <img src="docs/screenshots/home.png" width="210" alt="Home screen with battery, stored EQ response, noise control and spatial audio">
+  <img src="docs/screenshots/eq-presets.png" width="210" alt="Preset EQ view with a calculated response curve">
+  <img src="docs/screenshots/eq-custom.png" width="210" alt="Custom EQ editor with draggable band handles">
+</p>
+<p align="center">
+  <img src="docs/screenshots/eq-band-editor.png" width="210" alt="Band editor with filter type, frequency, gain and Q">
+  <img src="docs/screenshots/profiles.png" width="210" alt="Saved profile library with calculated response thumbnails">
+</p>
+
 ## Compatibility
 
 - **Headphones:** CMF Headphone Pro (B175).
