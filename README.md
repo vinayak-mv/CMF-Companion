@@ -105,24 +105,6 @@ npx --no-install tauri android build --debug --apk --target aarch64 --features a
 Settings are read once when the connection opens. If a readback looks wrong, disconnect and
 reconnect rather than expecting a refresh button.
 
-## How writes stay safe
-
-This is the part of the app that takes the most care.
-
-- **No automatic retries.** A missing acknowledgement does not mean a write failed, so a retry
-  could apply the same change twice. Every write is followed by a readback and resolves to
-  *verified*, *different*, or *uncertain* — the last two ask you to review, never to resend.
-- **Review before write.** Every EQ change requires a confirmation dialog showing the exact
-  device, firmware, preamp and band table.
-- **Target re-read.** Immediately before writing, the app re-reads the firmware and refuses if
-  the device or firmware changed since you reviewed it.
-- **Scoped spatial writes.** Spatial mode is only written on a device whose name identifies it
-  as a CMF Headphone Pro, and any unknown mode value is surfaced rather than coerced to Off.
-- **Draft-only editing.** The graph editor never talks to the device. Nothing is sent until
-  **Apply** is confirmed.
-
-There is no automatic EQ backup. Save a profile before large changes if you want a way back.
-
 ## How it works
 
 ```
