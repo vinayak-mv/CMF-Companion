@@ -740,9 +740,6 @@ async function reviewEq(action, value = null) {
       if (connection.requested_eq) appendProfileRows(connection.requested_eq, 'Last requested');
       if (connection.eq) appendProfileRows(connection.eq, 'Read from headphones');
     }
-    $('#custom-mode-label').textContent = 'Custom EQ is selected in Nothing X.';
-    $('#custom-mode-confirmed').required = true;
-    $('#custom-mode-confirmed').checked = false;
     $('#confirm-eq').textContent = 'Apply and verify';
     $('#cancel-eq').textContent = 'Cancel';
     $('#eq-confirm-result').textContent = '';
@@ -767,10 +764,9 @@ async function commitDeviceChange(review, fromDialog = false) {
   renderConnection();
   $('#confirm-eq').disabled = true;
   $('#cancel-eq').disabled = true;
-  $('#custom-mode-confirmed').disabled = true;
   $('#eq-confirm-result').textContent = 'Writing EQ and checking device readback…';
   try {
-    const args = { address: review.address, firmware: review.firmware, customModeConfirmed: true };
+    const args = { address: review.address, firmware: review.firmware };
     if (review.action === 'apply') args.profile = review.profile;
     if (review.action === 'spatial') { args.mode = review.value; args.confirmed = true; }
     const command = {spatial:'set_spatial',apply:'apply_eq'}[review.action];
@@ -787,14 +783,13 @@ async function commitDeviceChange(review, fromDialog = false) {
     connectionBusy = false;
     $('#confirm-eq').disabled = false;
     $('#cancel-eq').disabled = false;
-    $('#custom-mode-confirmed').disabled = false;
     renderConnection();
     schedulePoll();
   }
 }
 $('#eq-confirm-form').onsubmit = event => {
   event.preventDefault();
-  if (!writeReview || connectionBusy || !$('#custom-mode-confirmed').checked) return;
+  if (!writeReview || connectionBusy) return;
   commitDeviceChange(writeReview, true);
 };
 

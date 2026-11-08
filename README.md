@@ -100,9 +100,7 @@ npx --no-install tauri android build --debug --apk --target aarch64 --features a
 1. Pair the CMF Headphone Pro in your OS Bluetooth settings.
 2. Open CMF EQ and press **Connect headphones**. It autoconnects on launch when the headphones
    are paired and in range.
-3. For EQ writes, select **Custom** EQ in Nothing X first. There is no verified command to
-   switch the headphones into Custom mode, so the app asks you to confirm this instead of
-   guessing. Close Nothing X if it is holding the control connection.
+3. Close Nothing X if it is holding the control connection.
 
 Settings are read once when the connection opens. If a readback looks wrong, disconnect and
 reconnect rather than expecting a refresh button.

@@ -105,9 +105,9 @@ This is the part of the codebase that matters most; preserve it when touching th
   never to resend.
 - `confirm_write_target` re-reads firmware immediately before writing and rejects if the device
   or firmware changed since the review. Callers pass the address and firmware the user saw.
-- `custom_mode_confirmed` must be true for EQ writes: there is no verified command to switch the
-  headphones into Custom EQ mode, which is why the UI requires selecting it in Nothing X first.
-  `gain_trial_confirmed` follows the same pattern. Spatial writes always receive `confirmed: true`
+- EQ writes carry no custom-preset confirmation: there is no verified command to switch the
+  headphones into Custom EQ mode, so the app writes the filter bank without one.
+  `gain_trial_confirmed` still follows the consent pattern. Spatial writes always receive `confirmed: true`
   from the UI with no consent dialog; the write is still guarded by the device-name restriction,
   target re-read and mode readback. The home-page output-gain card was removed from the UI (the
   EQ preamp is the only gain control), so `set_bluetooth_gain` / `undo_bluetooth_gain` have no UI

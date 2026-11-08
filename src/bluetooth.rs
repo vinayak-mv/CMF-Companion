@@ -223,10 +223,9 @@ impl Controller {
         profile: Profile,
         address: &str,
         firmware: &str,
-        custom_mode_confirmed: bool,
     ) -> Result<ConnectionStatus, String> {
         crate::autoeq::validate(&profile)?;
-        self.prepare_eq_write(address, firmware, custom_mode_confirmed)?;
+        self.prepare_eq_write(address, firmware)?;
         self.write_eq(profile)
     }
 
@@ -234,12 +233,7 @@ impl Controller {
         &mut self,
         address: &str,
         firmware: &str,
-        custom_mode_confirmed: bool,
     ) -> Result<Profile, String> {
-        // Custom-preset activation is not a verified command on this model yet.
-        if !custom_mode_confirmed {
-            return Err("Select Custom EQ in Nothing X and confirm it before applying.".into());
-        }
         self.confirm_write_target(address, firmware)?;
         let baseline = self
             .session
@@ -260,7 +254,6 @@ impl Controller {
         expected_eq: Profile,
         address: &str,
         firmware: &str,
-        custom_mode_confirmed: bool,
         gain_trial_confirmed: bool,
     ) -> Result<ConnectionStatus, String> {
         if !matches!(delta_db, -1 | 1) {
@@ -269,7 +262,7 @@ impl Controller {
         if !gain_trial_confirmed {
             return Err("Enable direct gain control and acknowledge the clipping risk first.".into());
         }
-        let baseline = self.prepare_eq_write(address, firmware, custom_mode_confirmed)?;
+        let baseline = self.prepare_eq_write(address, firmware)?;
         if protocol::encode_eq(&baseline)? != protocol::encode_eq(&expected_eq)? {
             return Err("Headphone EQ changed since it was displayed. Review the refreshed device settings and try again.".into());
         }
@@ -285,8 +278,8 @@ impl Controller {
         self.write_eq(profile)
     }
 
-    pub fn undo_bluetooth_gain(&mut self, expected_eq: Profile, address: &str, firmware: &str, custom_mode_confirmed: bool) -> Result<ConnectionStatus, String> {
-        let baseline = self.prepare_eq_write(address, firmware, custom_mode_confirmed)?;
+    pub fn undo_bluetooth_gain(&mut self, expected_eq: Profile, address: &str, firmware: &str) -> Result<ConnectionStatus, String> {
+        let baseline = self.prepare_eq_write(address, firmware)?;
         let change = self.gain_records.load(address, firmware)?.ok_or("No gain change is available to undo.")?;
         let actual = protocol::encode_eq(&baseline)?;
         if actual != protocol::encode_eq(&expected_eq)? || actual != protocol::encode_eq(&change.after)? {

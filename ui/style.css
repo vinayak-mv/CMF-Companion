@@ -299,8 +299,6 @@ dialog form { display: grid; gap: 12px; }
 .confirm-table th, .confirm-table td { padding: 6px; text-align: right; border-bottom: 1px solid var(--field); }
 .confirm-table th:first-child, .confirm-table td:first-child { text-align: left; }
 .confirm-table th[colspan] { text-align: left; color: var(--accent); }
-.custom-mode-check { display: flex; align-items: center; gap: 8px; font-size: 11px; line-height: 1.5; }
-.custom-mode-check input { accent-color: var(--accent); flex: none; }
 #eq-confirm-result:empty { display: none; }
 .band-guide { stroke: var(--accent); stroke-width: 1; stroke-dasharray: 5 6; opacity: .6; }
 .band-dot { fill: var(--accent); stroke: var(--surface); stroke-width: 3; }
