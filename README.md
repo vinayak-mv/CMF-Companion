@@ -2,7 +2,7 @@
 
 <img src="ui/brand-mark.svg" width="76" height="76" alt="CMF EQ logo">
 
-# CMF EQ
+# CMF Companion
 
 **An unofficial companion app for the CMF Headphone Pro (B175), for Windows and Android.**
 
