@@ -36,7 +36,6 @@ let profileLibrary = null;
 let eqGraph = null;
 const deviceKey = () => connection.connected ? `${connection.device.address}|${connection.firmware}` : null;
 const cloneProfile = profile => JSON.parse(JSON.stringify(profile));
-const spatialNames = {0:'Off',2:'Concert',3:'Cinema'};
 let pendingCondition = 'Imported draft · match ANC to the profile’s measurement condition.';
 
 function renderConnection() {
@@ -112,11 +111,10 @@ async function setAnc(mode) {
   clearTimeout(pollTimer);
   connectionBusy = true;
   renderConnection();
-  message('Applying noise control and checking headphone readback…');
   try {
     connection = await invoke('set_anc', { mode });
     ancExpanded = [1,2,3,4].includes(connection.anc_mode);
-    connectionMessage('Noise control verified on headphones.');
+    if (connection.warnings?.length) message(connection.warnings.join(' '), true);
   } catch (error) {
     try { connection = await invoke('headphone_status'); }
     catch { connection = { connected: false }; }
@@ -772,8 +770,7 @@ async function commitDeviceChange(review, fromDialog = false) {
     const command = {spatial:'set_spatial',apply:'apply_eq'}[review.action];
     connection = await invoke(command, args);
     if (fromDialog) $('#eq-confirm').close();
-    message(review.action === 'spatial' ? `${spatialNames[connection.spatial_mode]} matches mode readback.`
-      : `EQ values verified.${connection.eq_write_note ? ` ${connection.eq_write_note}` : ''} Your editor draft is kept.`);
+    if (review.action === 'apply') message(`EQ values verified.${connection.eq_write_note ? ` ${connection.eq_write_note}` : ''} Your editor draft is kept.`);
   } catch (error) {
     try { connection = await invoke('headphone_status'); }
     catch { connection = {connected:false}; }
