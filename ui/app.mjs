@@ -36,7 +36,7 @@ let profileLibrary = null;
 let eqGraph = null;
 const deviceKey = () => connection.connected ? `${connection.device.address}|${connection.firmware}` : null;
 const cloneProfile = profile => JSON.parse(JSON.stringify(profile));
-let pendingCondition = 'Imported draft · match ANC to the profile’s measurement condition.';
+let pendingCondition = 'Imported · match ANC to the profile’s measurement condition.';
 
 function renderConnection() {
   const connected = connection.connected;
@@ -327,7 +327,7 @@ $('#choose-profile').onclick = async () => {
   try {
     const profile = await invoke('import_profile_file');
     if (!profile || version !== importVersion) return;
-    pending = profile; pendingCondition = 'Imported draft · match ANC to the profile’s measurement condition.';
+    pending = profile; pendingCondition = 'Imported · match ANC to the profile’s measurement condition.';
     $('#preview-label').textContent = 'IMPORT PREVIEW'; $('#import-name').textContent = profile.name;
     $('#import-summary').textContent = `${profile.filters.length} bands · ${profile.preamp} dB preamp`;
     $('#import-preview').hidden = false;
@@ -791,7 +791,7 @@ $('#eq-confirm-form').onsubmit = event => {
 };
 
 $('#profile-file').onchange=async event=>{
-  pendingCondition = 'Imported draft · match ANC to the profile’s measurement condition.';
+  pendingCondition = 'Imported · match ANC to the profile’s measurement condition.';
   $('#preview-label').textContent = 'IMPORT PREVIEW';
   const version=++importVersion;pending=null;$('#import-preview').hidden=true;
   const file=event.target.files[0];if(!file)return;
@@ -802,12 +802,19 @@ $('#profile-file').onchange=async event=>{
     if(version!==importVersion)return;
     pending=profile;$('#import-name').textContent=profile.name;
     $('#import-summary').textContent=`${profile.filters.length} bands · ${profile.preamp} dB preamp${profile.disabled_filters.length ? ` · ${profile.disabled_filters.length} disabled rows skipped` : ''}`;
-    $('#import-preview').hidden=false;message('Profile validated. Review the import before replacing your draft.');
+    $('#import-preview').hidden=false;message('Profile validated. Save it to add it to your library.');
   }catch(error){if(version===importVersion)message(String(error.message??error),true);}
   finally{event.target.value='';}
 };
-$('#use-import').onclick=()=>{if(pending){changeDraft(()=>useProfile(pending,pendingCondition));pending=null;$('#import-preview').hidden=true;showTab('eq', true);}};
-$('#cancel-import').onclick=()=>{++importVersion;pending=null;$('#import-preview').hidden=true;message('Import cancelled. Your draft is unchanged.');};
+$('#save-import').onclick = async () => {
+  if (!pending) return;
+  try {
+    if (await profileLibrary.saveImported(pending, pendingCondition)) {
+      pending = null; $('#import-preview').hidden = true;
+    }
+  } catch (error) { message(String(error.message ?? error), true); }
+};
+$('#cancel-import').onclick=()=>{++importVersion;pending=null;$('#import-preview').hidden=true;message('Import cancelled. Nothing was saved.');};
 $('#reference').onclick=async()=>{try{if(!invoke)throw Error('Load reference needs the desktop app. This preview opens with a Punch draft.');const profile=await invoke('reference_profile');++importVersion;pending=null;$('#import-preview').hidden=true;changeDraft(()=>{useProfile(profile);$('#condition').textContent='Reference tuning · ANC maximum.';});showTab('eq', true);}catch(error){message(String(error.message??error),true);}};
 profileLibrary = createProfileLibrary({
   invoke, capture: captureDraft, message, onBusy: renderEqState,

@@ -69,6 +69,15 @@ export function createProfileLibrary({ invoke, capture, openDraft, savedDraft, m
   const pageSize = 4;
   const identity = value => value.trim().toLowerCase();
   const matchingName = () => profiles.find(entry => identity(entry.profile.name) === identity($('#saved-profile-name').value));
+  // Imports keep the file's name; a numeric suffix avoids a dead end on a name clash.
+  function availableName(base) {
+    // 74 leaves room for a " (999)" suffix inside the 80-character limit.
+    const name = Array.from((base ?? '').trim()).slice(0, 74).join('').trim() || 'Imported profile';
+    const taken = candidate => profiles.some(entry => identity(entry.profile.name) === identity(candidate));
+    if (!taken(name)) return name;
+    for (let index = 2; index < 1000; index += 1) if (!taken(`${name} (${index})`)) return `${name} (${index})`;
+    return `${name} (${profiles.length + 1})`;
+  }
 
   function render() {
     const query = identity($('#profile-search').value);
@@ -182,6 +191,23 @@ export function createProfileLibrary({ invoke, capture, openDraft, savedDraft, m
     finally { setBusy(false); }
   }
 
+  // Imported profiles skip the editor: import_autoeq has already validated them.
+  async function saveImported(profile, condition) {
+    if (!invoke) throw Error('File import needs the desktop app.');
+    if (busy) return null;
+    const request = { id: null, expected_revision: null,
+      profile: { ...profile, name: availableName(profile.name ?? '') },
+      condition: condition || '', tone: null };
+    setBusy(true);
+    try {
+      const result = await invoke('save_library_profile', { request });
+      page = 0;
+      await refresh();
+      message(`“${result.profile.name}” saved on this computer.`);
+      return result;
+    } finally { setBusy(false); }
+  }
+
   async function remove() {
     if (busy || !dialogState?.entry) return;
     const entry = dialogState.entry;
@@ -236,5 +262,5 @@ export function createProfileLibrary({ invoke, capture, openDraft, savedDraft, m
     finally { setBusy(false); }
   };
   render();
-  return { openSave: () => showDialog(), refresh, get busy() { return busy; } };
+  return { openSave: () => showDialog(), saveImported, refresh, get busy() { return busy; } };
 }
