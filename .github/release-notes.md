@@ -9,8 +9,8 @@ Unofficial companion app for the **CMF Headphone Pro (B175)**.
 
 ## Before applying EQ
 
-Select **Custom** EQ in Nothing X first. The app reads the headphones' current settings when it
-connects, and every write is checked with a readback.
+The app reads the headphones' current settings when it connects, and every write is checked with
+a readback.
 
 Documentation, build instructions and limitations: see the
 [README](https://github.com/vinayak-mv/CMF-Companion#readme).

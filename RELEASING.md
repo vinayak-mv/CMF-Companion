@@ -14,8 +14,9 @@ builds on top of the release.
 ## Cut a release
 
 ```bash
-# 1. Bump the version in Cargo.toml and tauri.conf.json (package.json too, for tidiness).
-git add Cargo.toml tauri.conf.json package.json
+# 1. Bump the version in Cargo.toml, tauri.conf.json and package.json, plus the matching
+#    entries in Cargo.lock and package-lock.json (the release build uses --locked).
+git add Cargo.toml Cargo.lock tauri.conf.json package.json package-lock.json
 git commit -m "Release v0.1.0"
 git push origin main
 

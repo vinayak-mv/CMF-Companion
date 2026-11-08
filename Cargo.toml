@@ -1,6 +1,6 @@
 [package]
 name = "cmf-eq"
-version = "0.1.0"
+version = "0.1.1"
 description = "CMF Headphone Pro EQ companion"
 edition = "2021"
 
